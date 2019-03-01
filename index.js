@@ -33,21 +33,21 @@ mongoose.connect(process.env.MONGODB_URI, {
 });
 
 mongoose.connection.on('connected', () => {
-  console.log(chalk.green(new Date(), 'Mongoose connected to ', process.env.MONGODB_URI));
+  console.log(chalk.green(new Date(), '\n -> Mongoose connected to', process.env.MONGODB_URI));
 });
 mongoose.connection.on('disconnected', () => {
-  console.log(chalk.red(new Date(), 'Mongoose disconnected from ', process.env.MONGODB_URI));
+  console.log(chalk.red(new Date(), '\n -> Mongoose disconnected from', process.env.MONGODB_URI));
 });
 mongoose.connection.on('error', (err) => {
   if (err.message.match(/failed to connect to server .* on first connect/)) {
-    console.error(chalk.bold.bgRed(new Date(), 'Mongoose unable to connect to database, it is running?'));
+    console.error(chalk.bold.bgRed(new Date(), '\n -> Mongoose unable to connect to database, it is running?'));
     process.exit(0);
   }
-  console.error(chalk.bold.red(new Date(), 'Mongoose error: ', err.message));
+  console.error(chalk.bold.red(new Date(), '\n -> Mongoose error:', err.message));
 });
 process.on('SIGINT', () => {
   mongoose.connection.close(() => {
-    console.log(chalk.bold.red(new Date(), 'Mongoose disconnected on application termination'));
+    console.log(chalk.bold.red(new Date(), '\n -> Mongoose disconnected on application termination'));
     process.exit(0);
   });
 });
@@ -67,4 +67,4 @@ const server = https.createServer({
 server.listen(port);
 console.log('Server listening on port: ', port);
 
-module.exports = { server };
+module.exports = { server }; // for test scripts

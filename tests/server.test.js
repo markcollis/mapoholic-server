@@ -11,7 +11,7 @@ const request = require('supertest');
 
 const { server } = require('../');
 const User = require('../models/user');
-// const Profile = require('../models/profile');
+const Profile = require('../models/profile');
 // const Club = require('../models/club');
 // const OEvent = require('../models/oevent');
 // const LinkedEvent = require('../models/linkedEvent');
@@ -23,21 +23,17 @@ const {
   // initOEvents,
   // initLinkedEvents,
   populateUsers, //     independent
-  // populateClubs, //     requires user_id
-  // populateProfiles, //  requires user_id, links to club_id
+  populateClubs, //     requires user_id
+  populateProfiles, //  requires user_id, links to club_id
   // populateOEvents, //   requires user_id, links to club_id
   // populateLinkedEvents, // interdependent links to oevent_id and from oevent.linkedTo
 } = require('./seed');
 
 beforeEach(populateUsers);
-// beforeEach(populateClubs);
-// beforeEach(populateProfiles);
+beforeEach(populateClubs);
+beforeEach(populateProfiles);
 // beforeEach(populateOEvents);
 // beforeEach(populateLinkedEvents);
-
-// What routes should be developed? (tie to user requirements)
-// POST /users/login
-// POST /users/signup
 
 describe('POST /users/signup', () => {
   it('should create a new user', (done) => {
@@ -57,7 +53,10 @@ describe('POST /users/signup', () => {
         return User.find({ email: newUser.email }).then((users) => {
           expect(users.length).toBe(1);
           expect(users[0].email).toBe('new@user.com');
-          done();
+          return Profile.find({ user_id: users[0]._id }).then((profiles) => {
+            expect(profiles.length).toBe(1);
+            done();
+          });
         }).catch(e => done(e));
       });
   });
@@ -145,6 +144,31 @@ describe('POST /users/login', () => {
       });
   });
 });
+
+// retrieve a list of all users (ids) matching specified criteria
+describe('GET /users', () => {});
+// retrieve full details for the currently logged in user
+describe('GET /users/me', () => {});
+// retrieve full details for the specified user
+describe('GET /users/:id', () => {});
+// retrieve a list of all publicly visible users (ids) matching specified criteria
+describe('GET /users/public', () => {});
+// update the specified user (multiple amendment not supported)
+describe('PATCH /users/:id', () => {});
+// delete the specified user (multiple deletion not supported)
+describe('DELETE /users/:id', () => {});
+
+// create a club
+describe('POST /clubs', () => {});
+// retrieve a list of all clubs (ids) matching specified criteria
+describe('GET /clubs', () => {});
+// retrieve full details for the specified club
+describe('GET /clubs/:id', () => {});
+// update the specified club (multiple amendment not supported)
+describe('PATCH /clubs/:id', () => {});
+// delete the specified club (multiple deletion not supported)
+describe('DELETE /clubs/:id', () => {});
+
 
 // *** all cases below this line are for reference only and do not relate to this app ***
 

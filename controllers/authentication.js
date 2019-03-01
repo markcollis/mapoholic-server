@@ -1,14 +1,16 @@
 const jwt = require('jwt-simple');
 const chalk = require('chalk');
 const User = require('../models/user');
+const Profile = require('../models/profile');
 
 const tokenForUser = (user) => {
   const timestamp = new Date().getTime();
-  return jwt.encode({ sub: user.id, iat: timestamp }, process.env.JWT_SECRET);
+  console.log('user _id for token:', user._id);
+  return jwt.encode({ sub: user._id, iat: timestamp }, process.env.JWT_SECRET);
   // sub = subject (token owner), iat = issued at time (reference at jtw.io)
 };
 
-exports.login = (req, res) => {
+const login = (req, res) => {
   console.log('received login POST request');
   console.log('req.body:', req.body); // shows password in plaintext - DEV ONLY!
   console.log('req.user:', req.user);
@@ -16,7 +18,7 @@ exports.login = (req, res) => {
   res.json({ token: tokenForUser(req.user) });
 };
 
-exports.signup = (req, res, next) => {
+const signup = (req, res, next) => {
   console.log('received signup POST request');
   console.log('req.body:', req.body); // shows password in plaintext - DEV ONLY!
   const { email, password } = req.body;
@@ -40,12 +42,26 @@ exports.signup = (req, res, next) => {
     // if not, create the user
     const newUser = new User({ email, password });
     // console.log('newUser', newUser);
-    return newUser.save((saveErr) => {
-      if (err) return next(saveErr);
+    return newUser.save((saveUserErr) => {
+      if (saveUserErr) return next(saveUserErr);
+      const newProfile = new Profile({
+        user: newUser._id,
+        displayName: newUser.email,
+      });
       console.log('new user created:', newUser);
-      // return token if successful
-      return res.json({ token: tokenForUser(newUser) });
+      return newProfile.save((saveProfileErr) => {
+        if (saveProfileErr) {
+          return User.findOneAndDelete({ _id: newUser._id }).then(() => {
+            return next(saveProfileErr);
+          });
+        }
+        console.log('new profile created:', newProfile);
+        // return token if successful
+        return res.json({ token: tokenForUser(newUser) });
+      });
     });
   });
   return true;
 };
+
+module.exports = { login, signup };

@@ -13,7 +13,6 @@ const userSchema = new mongoose.Schema({
   },
   password: { type: String, required: true },
   role: { type: String, enum: ['standard', 'admin', 'guest'], default: 'standard' },
-  lastModified: { type: Date },
 }, { timestamps: true });
 
 // on save hook, encrypt password

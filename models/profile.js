@@ -3,7 +3,7 @@ const validator = require('validator');
 
 // define model for user profile information
 const profileSchema = new mongoose.Schema({
-  user_id: { type: mongoose.Schema.Types.ObjectID, ref: 'user', required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
   visibility: {
     type: String,
     required: true,
@@ -24,7 +24,7 @@ const profileSchema = new mongoose.Schema({
     // not necessarily the same as the ACCOUNT email, UI needs to be clear on this
     facebook: { type: String },
   },
-  memberOf: [{ type: mongoose.Schema.Types.ObjectID, ref: 'club' }],
+  memberOf: [{ type: mongoose.Schema.Types.ObjectId, ref: 'club' }],
   profileImage: { type: String }, // reference to file in /uploads/user/user_id/profile.jpg
 }, { timestamps: true });
 

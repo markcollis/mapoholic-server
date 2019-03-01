@@ -5,7 +5,7 @@ const validator = require('validator');
 
 // define model for map information (to be embedded in event)
 const mapSchema = new mongoose.Schema({
-  user_id: { type: mongoose.Schema.Types.ObjectID, ref: 'user', required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
   visibility: {
     type: String,
     required: true,
@@ -90,7 +90,7 @@ const mapSchema = new mongoose.Schema({
     }],
   },
   comments: [{
-    author_id: { type: mongoose.Schema.Types.ObjectID, ref: 'user', required: true },
+    author: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
     // need to think about whether a link to _profile_ is more relevant
     text: { type: String, required: true },
     postedAt: { type: Date, default: Date.now },
@@ -100,11 +100,11 @@ const mapSchema = new mongoose.Schema({
 
 // define model for event (and embedded map) information
 const oeventSchema = new mongoose.Schema({
-  owner_id: { type: mongoose.Schema.Types.ObjectID, ref: 'user', required: true },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
   date: { type: Date, required: true },
   name: { type: String, required: true, unique: true },
-  organisedBy: [{ type: mongoose.Schema.Types.ObjectID, ref: 'club' }],
-  linkedTo: [{ type: mongoose.Schema.Types.ObjectID, ref: 'linkedevent' }],
+  organisedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'club' }],
+  linkedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'linkedevent' }],
   mapName: { type: String },
   nearbyTown: { type: String },
   country: { type: String, validate: value => validator.isISO31661Alpha3(value) },
