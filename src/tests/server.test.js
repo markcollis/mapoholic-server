@@ -50,10 +50,12 @@ describe('POST /users/signup', () => {
       })
       .end((err) => {
         if (err) return done(err);
+        console.log('about to search for newUser');
         return User.find({ email: newUser.email }).then((users) => {
+          console.log(users);
           expect(users.length).toBe(1);
           expect(users[0].email).toBe('new@user.com');
-          return Profile.find({ user_id: users[0]._id }).then((profiles) => {
+          return Profile.find({ user: users[0]._id }).then((profiles) => {
             expect(profiles.length).toBe(1);
             done();
           });
