@@ -1,4 +1,5 @@
 const chalk = require('chalk');
+// const querystring = require('querystring');
 // const User = require('../models/user');
 const Profile = require('../models/profile');
 const Club = require('../models/club');
@@ -41,9 +42,18 @@ const findAndReturnUserList = (userSearchCriteria) => {
 // retrieve a list of all users (ids) matching specified criteria
 const getUserList = (req, res) => {
   logReq(req);
+  const userSearchCriteria = {};
+  const validFilters = ['displayName', 'fullName', 'location', 'about', 'contact', 'memberOf'];
+  Object.keys(req.query).forEach((key) => {
+    console.log(key, req.query[key]);
+    if (validFilters.includes(key)) {
+      userSearchCriteria[key] = { $regex: new RegExp(req.query[key]) };
+    }
+  });
   // handle public route first (club search would fail)
   if (req.user.role === 'anonymous') {
-    findAndReturnUserList({ visibility: 'public' }).then((userList) => {
+    userSearchCriteria.visibility = 'public';
+    return findAndReturnUserList(userSearchCriteria).then((userList) => {
       if (userList.error) return res.status(400).send(userList.error.message);
       // if (!userDetails.profile) return res.status(400).send('User details could not be found.');
       return res.status(200).send(userList);
@@ -58,7 +68,6 @@ const getUserList = (req, res) => {
       const requestorClubs = requestorProfile.memberOf.map(club => club._id.toString());
       console.log('requestorClubs', requestorClubs);
       // define criteria based on permissions (what about query string parameters?)
-      const userSearchCriteria = {};
       if (req.user.role === 'guest' || req.user.role === 'standard') {
         userSearchCriteria.$or = [
           { visibility: ['public', 'all'] },
