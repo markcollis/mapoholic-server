@@ -1,7 +1,7 @@
 const chalk = require('chalk');
-// const querystring = require('querystring');
+const { ObjectID } = require('mongodb');
 const User = require('../models/user');
-const Club = require('../models/club');
+require('../models/club');
 
 // log content of request to aid development - remove/comment out in production
 const logReq = (req) => {
@@ -26,13 +26,13 @@ const findAndReturnUserList = (userSearchCriteria) => {
           ? profile.memberOf.map(club => club.shortName)
           : [];
         return {
-          user_id: profile.user._id,
+          user_id: profile._id,
           displayName: profile.displayName,
           fullName: profile.fullName || '',
           email: profile.contact.email || '',
           memberOf: clubList,
           profileImage: profile.profileImage || '',
-          role: profile.user.role,
+          role: profile.role,
         };
       });
     });
@@ -41,30 +41,41 @@ const findAndReturnUserList = (userSearchCriteria) => {
 // retrieve a list of all users (ids) matching specified criteria
 const getUserList = (req, res) => {
   logReq(req);
-  const requestorClubs = req.user.memberOf.map(club => club._id.toString());
-  console.log('requestorClubs', requestorClubs);
   const userSearchCriteria = {};
-  const validFilters = ['displayName', 'fullName', 'location', 'about', 'contact', 'memberOf'];
+  // support basic filtering using query strings (consider e.g. mongoose-string-query later?)
+  const validFilters = ['displayName', 'fullName', 'location', 'about', 'contact.email', 'memberOf'];
   Object.keys(req.query).forEach((key) => {
     console.log('filtering on', key, req.query[key]);
     if (validFilters.includes(key)) {
-      userSearchCriteria[key] = { $regex: new RegExp(req.query[key]) };
+      if (key === 'memberOf') {
+        // needs custom treatment to avoid ObjectID cast error/return empty array if no such club
+        if (ObjectID.isValid(req.query.memberOf)) {
+          userSearchCriteria.memberOf = req.query.memberOf;
+        } else {
+          userSearchCriteria.memberOf = null;
+        }
+      } else {
+        userSearchCriteria[key] = { $regex: new RegExp(req.query[key]) };
+      }
     }
   });
-  // define criteria based on permissions (what about query string parameters?)
+  // anonymous users can only see public profiles
   if (req.user.role === 'anonymous') {
     userSearchCriteria.visibility = 'public';
   }
+  // non-admin users can only see profiles with matching visibility limitations
   if (req.user.role === 'guest' || req.user.role === 'standard') {
     userSearchCriteria.$or = [
       { visibility: ['public', 'all'] },
       { user: req.user._id },
     ];
-  }
-  if (req.user.role === 'standard' && requestorClubs.length > 0) {
-    requestorClubs.forEach((club) => {
-      userSearchCriteria.$or.push({ visibility: ['club'], memberOf: [club] });
-    });
+    const requestorClubs = req.user.memberOf.map(club => club._id.toString());
+    console.log('requestorClubs', requestorClubs);
+    if (requestorClubs.length > 0) {
+      requestorClubs.forEach((club) => {
+        userSearchCriteria.$or.push({ visibility: ['club'], memberOf: [club] });
+      });
+    }
   }
   findAndReturnUserList(userSearchCriteria).then((userList) => {
     if (userList.error) return res.status(400).send(userList.error.message);
@@ -80,7 +91,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
   const requestorId = requestingUser._id.toString();
   const requestorClubs = requestingUser.memberOf.map(club => club._id.toString());
   console.log('requestor:', requestorRole, requestorId, requestorClubs);
-  return User.findOneById(userId)
+  return User.findById(userId)
     .populate('memberOf')
     .select('-password')
     .then((profile) => {
