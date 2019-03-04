@@ -1,6 +1,6 @@
 {
-  "name": "server",
-  "version": "1.0.0",
+  "name": "omapfolder-server",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -10,7 +10,7 @@
     "test-watch": "nodemon --exec 'yarn test'",
     "mongo": "sudo service mongod start"
   },
-  "author": "",
+  "author": "Mark Collis",
   "license": "ISC",
   "devDependencies": {
     "babel-eslint": "^10.0.1",

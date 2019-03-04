@@ -2,7 +2,6 @@
 const { ObjectID } = require('mongodb');
 const User = require('../models/user');
 const Club = require('../models/club');
-const Profile = require('../models/profile');
 // const OEvent = require('../models/oevent');
 // const LinkedEvent = require('../models/linkedEvent');
 
@@ -12,10 +11,22 @@ const initUsers = [{
   _id: userOneId,
   email: 'mark@example.com',
   password: 'userOnePassword',
+  visibility: 'club',
+  displayName: 'User1',
+  fullName: 'User One',
+  location: 'in a forest somewhere',
+  about: 'If I wanted to, I could tell you all sorts of interesting things about me...',
+  contact: { // can flesh out with others if desired later
+    email: 'i@have.more.than.one',
+    // not necessarily the same as the ACCOUNT email, UI needs to be clear on this
+    facebook: 'userOneFB',
+  },
+  profileImage: '/uploads/user/user_id/profile.jpg',
 }, {
   _id: userTwoId,
   email: 'mark@test.com',
   password: 'userTwoPass',
+  displayName: 'Mark@Test',
 }];
 
 const populateUsers = (done) => {
@@ -53,48 +64,19 @@ const populateClubs = (done) => {
     .then(() => done());
 };
 
-const profileOneId = new ObjectID();
-const profileTwoId = new ObjectID();
-const initProfiles = [{
-  _id: profileOneId,
-  user: userOneId,
-  visibility: 'club',
-  displayName: 'User1',
-  fullName: 'User One',
-  location: 'in a forest somewhere',
-  about: 'If I wanted to, I could tell you all sorts of interesting things about me...',
-  contact: { // can flesh out with others if desired later
-    email: 'i@have.more.than.one',
-    // not necessarily the same as the ACCOUNT email, UI needs to be clear on this
-    facebook: 'userOneFB',
-  },
-  memberOf: [clubOneId, clubTwoId],
-  profileImage: '/uploads/user/user_id/profile.jpg',
-}, {
-  _id: profileTwoId,
-  user: userTwoId,
-  displayName: initUsers[1].email,
-}];
-
-const populateProfiles = (done) => {
-  Profile.deleteMany({})
-    .then(() => {
-      const profileOne = new Profile(initProfiles[0]).save();
-      const profileTwo = new Profile(initProfiles[1]).save();
-      return Promise.all([profileOne, profileTwo]);
-    })
+const mapUsersToClubs = (done) => {
+  User.findByIdAndUpdate(userOneId, { memberOf: [clubOneId, clubTwoId] }, { new: true })
     .then(() => done());
 };
 
 module.exports = {
   initUsers,
   initClubs,
-  initProfiles,
   // initOEvents,
   // initLinkedEvents,
-  populateUsers, //     independent
-  populateClubs, //     requires user_id
-  populateProfiles, //  requires user_id, links to club_id
-  // populateOEvents, //   requires user_id, links to club_id
+  populateUsers, //           independent
+  populateClubs, //           requires user_id
+  mapUsersToClubs, //         links to user_id, club_id
+  // populateOEvents, //      requires user_id, links to club_id
   // populateLinkedEvents, // interdependent links to oevent_id and from oevent.linkedTo
 };

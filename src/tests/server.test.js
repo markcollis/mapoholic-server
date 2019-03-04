@@ -11,7 +11,6 @@ const request = require('supertest');
 
 const { server } = require('../');
 const User = require('../models/user');
-const Profile = require('../models/profile');
 // const Club = require('../models/club');
 // const OEvent = require('../models/oevent');
 // const LinkedEvent = require('../models/linkedEvent');
@@ -19,19 +18,18 @@ const Profile = require('../models/profile');
 const {
   initUsers,
   // initClubs,
-  // initProfiles,
   // initOEvents,
   // initLinkedEvents,
-  populateUsers, //     independent
-  populateClubs, //     requires user_id
-  populateProfiles, //  requires user_id, links to club_id
-  // populateOEvents, //   requires user_id, links to club_id
+  populateUsers, //           independent
+  populateClubs, //           requires user_id
+  mapUsersToClubs, //         links to user_id, club_id
+  // populateOEvents, //      requires user_id, links to club_id
   // populateLinkedEvents, // interdependent links to oevent_id and from oevent.linkedTo
 } = require('./seed');
 
 beforeEach(populateUsers);
 beforeEach(populateClubs);
-beforeEach(populateProfiles);
+beforeEach(mapUsersToClubs);
 // beforeEach(populateOEvents);
 // beforeEach(populateLinkedEvents);
 
@@ -55,10 +53,7 @@ describe('POST /users/signup', () => {
           console.log(users);
           expect(users.length).toBe(1);
           expect(users[0].email).toBe('new@user.com');
-          return Profile.find({ user: users[0]._id }).then((profiles) => {
-            expect(profiles.length).toBe(1);
-            done();
-          });
+          done();
         }).catch(e => done(e));
       });
   });

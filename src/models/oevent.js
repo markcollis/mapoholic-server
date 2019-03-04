@@ -91,7 +91,6 @@ const mapSchema = new mongoose.Schema({
   },
   comments: [{
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
-    // need to think about whether a link to _profile_ is more relevant
     text: { type: String, required: true },
     postedAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },

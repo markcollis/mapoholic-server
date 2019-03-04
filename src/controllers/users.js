@@ -1,7 +1,6 @@
 const chalk = require('chalk');
 // const querystring = require('querystring');
-// const User = require('../models/user');
-const Profile = require('../models/profile');
+const User = require('../models/user');
 const Club = require('../models/club');
 
 // log content of request to aid development - remove/comment out in production
@@ -16,9 +15,9 @@ const logReq = (req) => {
 // retrieve and format matching user list data
 const findAndReturnUserList = (userSearchCriteria) => {
   console.log('userSearchCriteria:', userSearchCriteria);
-  return Profile.find(userSearchCriteria)
-    .populate('user', 'role email')
+  return User.find(userSearchCriteria)
     .populate('memberOf', 'shortName')
+    .select('-password')
     .then((profiles) => {
       // console.log('profiles:', profiles);
       // reformat into short summary of key data
@@ -42,65 +41,54 @@ const findAndReturnUserList = (userSearchCriteria) => {
 // retrieve a list of all users (ids) matching specified criteria
 const getUserList = (req, res) => {
   logReq(req);
+  const requestorClubs = req.user.memberOf.map(club => club._id.toString());
+  console.log('requestorClubs', requestorClubs);
   const userSearchCriteria = {};
   const validFilters = ['displayName', 'fullName', 'location', 'about', 'contact', 'memberOf'];
   Object.keys(req.query).forEach((key) => {
-    console.log(key, req.query[key]);
+    console.log('filtering on', key, req.query[key]);
     if (validFilters.includes(key)) {
       userSearchCriteria[key] = { $regex: new RegExp(req.query[key]) };
     }
   });
-  // handle public route first (club search would fail)
+  // define criteria based on permissions (what about query string parameters?)
   if (req.user.role === 'anonymous') {
     userSearchCriteria.visibility = 'public';
-    return findAndReturnUserList(userSearchCriteria).then((userList) => {
-      if (userList.error) return res.status(400).send(userList.error.message);
-      // if (!userDetails.profile) return res.status(400).send('User details could not be found.');
-      return res.status(200).send(userList);
-    }, (err) => {
-      res.status(400).send(err.message);
+  }
+  if (req.user.role === 'guest' || req.user.role === 'standard') {
+    userSearchCriteria.$or = [
+      { visibility: ['public', 'all'] },
+      { user: req.user._id },
+    ];
+  }
+  if (req.user.role === 'standard' && requestorClubs.length > 0) {
+    requestorClubs.forEach((club) => {
+      userSearchCriteria.$or.push({ visibility: ['club'], memberOf: [club] });
     });
   }
-  // otherwise get a list of clubs that the requestor belongs to
-  return Profile.findOne({ user: req.user._id })
-    .populate('memberOf')
-    .then((requestorProfile) => {
-      const requestorClubs = requestorProfile.memberOf.map(club => club._id.toString());
-      console.log('requestorClubs', requestorClubs);
-      // define criteria based on permissions (what about query string parameters?)
-      if (req.user.role === 'guest' || req.user.role === 'standard') {
-        userSearchCriteria.$or = [
-          { visibility: ['public', 'all'] },
-          { user: req.user._id },
-        ];
-      }
-      if (req.user.role === 'standard' && requestorClubs.length > 0) {
-        requestorClubs.forEach((club) => {
-          userSearchCriteria.$or.push({ visibility: ['club'], memberOf: [club] });
-        });
-      }
-      findAndReturnUserList(userSearchCriteria).then((userList) => {
-        if (userList.error) return res.status(400).send(userList.error.message);
-        return res.status(200).send(userList);
-      }, (err) => {
-        res.status(400).send(err.message);
-      });
-    });
+  findAndReturnUserList(userSearchCriteria).then((userList) => {
+    if (userList.error) return res.status(400).send(userList.error.message);
+    return res.status(200).send(userList);
+  }, (err) => {
+    res.status(400).send(err.message);
+  });
 };
 
 // helper method for the two retrieve full details routes
 const findAndReturnUserDetails = requestingUser => (userId) => {
-  return Profile.findOne({ user: userId })
-    .populate('user', '-password')
+  const requestorRole = requestingUser.role;
+  const requestorId = requestingUser._id.toString();
+  const requestorClubs = requestingUser.memberOf.map(club => club._id.toString());
+  console.log('requestor:', requestorRole, requestorId, requestorClubs);
+  return User.findOneById(userId)
     .populate('memberOf')
+    .select('-password')
     .then((profile) => {
-      const requestorRole = requestingUser.role;
-      const requestorId = requestingUser._id.toString();
-      console.log('requestor', requestorRole, requestorId);
-      const { visibility, user, memberOf } = profile;
-      const profileUserId = user._id.toString();
+      const { visibility, _id, memberOf } = profile;
+      const profileVisibility = visibility;
+      const profileUserId = _id.toString();
       const profileClubs = memberOf.map(club => club._id.toString());
-      console.log('subject', visibility, profileUserId, profileClubs);
+      console.log('subject:', profileVisibility, profileUserId, profileClubs);
       // is the requestor allowed to see this user profile or not?
       let allowedToSee = false;
       if (requestorRole === 'admin') allowedToSee = true;
@@ -109,29 +97,17 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
         if (requestorId === profileUserId) allowedToSee = true;
         if (visibility === 'public' || visibility === 'all') allowedToSee = true;
       }
+      if (requestorRole !== 'anonymous' && visibility === 'club') {
+        console.log('profileClubs', profileClubs);
+        console.log('requestorClubs', requestorClubs);
+        const commonClubs = profileClubs.filter(club => requestorClubs.includes(club));
+        console.log('commonClubs', commonClubs);
+        if (commonClubs.length > 0) allowedToSee = true;
+        console.log('allowedToSeeClub', allowedToSee);
+      }
       console.log('allowedToSee', allowedToSee);
       if (allowedToSee) {
         return { profile };
-      }
-      // extra check required if visibility is club members only
-      if (requestorRole !== 'anonymous' && visibility === 'club') {
-        // get clubs for requestor
-        // compare
-        return Profile.findOne({ user: requestorId })
-          .populate('memberOf')
-          .then((requestorProfile) => {
-            const requestorClubs = requestorProfile.memberOf.map(club => club._id.toString());
-            console.log('profileClubs', profileClubs);
-            console.log('requestorClubs', requestorClubs);
-            const commonClubs = profileClubs.filter(club => requestorClubs.includes(club));
-            console.log('commonClubs', commonClubs);
-            if (commonClubs.length > 0) allowedToSee = true;
-            console.log('allowedToSeeClub', allowedToSee);
-            if (allowedToSee) {
-              return { profile };
-            }
-            return { error: { message: 'Not authorised to view this profile.' } };
-          });
       }
       return { error: { message: 'Not authorised to view this profile.' } };
     }, (err) => {

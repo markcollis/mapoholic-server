@@ -1,7 +1,7 @@
 const jwt = require('jwt-simple');
 const chalk = require('chalk');
 const User = require('../models/user');
-const Profile = require('../models/profile');
+// const Profile = require('../models/profile');
 
 const tokenForUser = (user) => {
   const timestamp = new Date().getTime();
@@ -40,25 +40,25 @@ const signup = (req, res, next) => {
       return res.status(400).send({ error: 'This email address is already registered.' });
     }
     // if not, create the user
-    const newUser = new User({ email, password });
+    const newUser = new User({ email, password, displayName: email });
     // console.log('newUser', newUser);
     return newUser.save((saveUserErr) => {
       if (saveUserErr) return next(saveUserErr);
-      const newProfile = new Profile({
-        user: newUser._id,
-        displayName: newUser.email,
-      });
+      // const newProfile = new Profile({
+      //   user: newUser._id,
+      //   displayName: newUser.email,
+      // });
       console.log('new user created:', newUser);
-      return newProfile.save((saveProfileErr) => {
-        if (saveProfileErr) {
-          return User.findOneAndDelete({ _id: newUser._id }).then(() => {
-            return next(saveProfileErr);
-          });
-        }
-        console.log('new profile created:', newProfile);
-        // return token if successful
-        return res.json({ token: tokenForUser(newUser) });
-      });
+      // return token if successful
+      return res.json({ token: tokenForUser(newUser) });
+      // return newProfile.save((saveProfileErr) => {
+      //   if (saveProfileErr) {
+      //     return User.findOneAndDelete({ _id: newUser._id }).then(() => {
+      //       return next(saveProfileErr);
+      //     });
+      //   }
+      //   console.log('new profile created:', newProfile);
+      // });
     });
   });
   return true;

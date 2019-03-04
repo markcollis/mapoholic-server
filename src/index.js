@@ -30,6 +30,7 @@ const httpsCert = process.env.HTTPS_CERT || './certs/localhost.pem';
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useCreateIndex: true,
+  useFindAndModify: false,
 });
 
 mongoose.connection.on('connected', () => {
