@@ -11,6 +11,7 @@ const userOneId = new ObjectID();
 const userTwoId = new ObjectID();
 const userThreeId = new ObjectID();
 const userFourId = new ObjectID();
+const deletedUserId = new ObjectID();
 const clubOneId = new ObjectID();
 const clubTwoId = new ObjectID();
 
@@ -62,6 +63,14 @@ const initUsers = [{
   visibility: 'all',
   memberOf: [clubOneId],
 }];
+const deletedUser = { // to test that deleted (active = false) users don't show up
+  _id: deletedUserId,
+  email: 'mark@deleted.com',
+  password: 'deletedUserPass',
+  displayName: 'Deleted user',
+  visibility: 'public',
+  active: false,
+};
 const populateUsers = (done) => {
   User.deleteMany({})
     .then(() => {
@@ -69,7 +78,8 @@ const populateUsers = (done) => {
       const userTwo = new User(initUsers[1]).save();
       const userThree = new User(initUsers[2]).save();
       const userFour = new User(initUsers[3]).save();
-      return Promise.all([userOne, userTwo, userThree, userFour]);
+      const deleted = new User(deletedUser).save();
+      return Promise.all([userOne, userTwo, userThree, userFour, deleted]);
     })
     .then(() => done());
 };
@@ -99,6 +109,7 @@ const populateClubs = (done) => {
 
 module.exports = {
   initUsers,
+  deletedUser,
   initUserTokens,
   initClubs,
   // initOEvents,

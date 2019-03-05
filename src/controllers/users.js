@@ -31,7 +31,7 @@ const findAndReturnUserList = (userSearchCriteria) => {
 // retrieve a list of all users (ids) matching specified criteria
 const getUserList = (req, res) => {
   logReq(req);
-  const userSearchCriteria = {};
+  const userSearchCriteria = { active: true };
   // support basic filtering using query strings (consider e.g. mongoose-string-query later?)
   const validFilters = ['displayName', 'fullName', 'location', 'about', 'contact.email', 'memberOf'];
   Object.keys(req.query).forEach((key) => {
@@ -85,7 +85,8 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
     ? null
     : requestingUser.memberOf.map(club => club._id.toString());
   // console.log('requestor:', requestorRole, requestorId, requestorClubs);
-  return User.findById(userId)
+  // return User.findById(userId)
+  return User.findOne({ _id: userId, active: true })
     .populate('memberOf')
     .select('-password')
     .then((profile) => {
@@ -138,7 +139,70 @@ const getUserById = (req, res) => {
 // update the specified user (multiple amendment not supported)
 const updateUser = (req, res) => {
   logReq(req);
-  res.send({ message: 'PATCH /users/:id is still TBD' });
+  const { id } = req.params;
+  const requestorRole = req.user.role;
+  const requestorId = req.user._id.toString();
+  if (!ObjectID.isValid(id)) {
+    res.status(404).send('Invalid ID');
+  } else {
+    const fieldsToUpdate = {};
+    const validFields = [ // password needs a separate hook in authentication
+      'email',
+      'visibility',
+      'displayName',
+      'fullName',
+      'location',
+      'about',
+      'contact',
+      'memberOf',
+      'profileImage', // path to uploaded image will need to be set in middleware
+    ];
+    Object.keys(req.body).forEach((key) => {
+      // console.log('filtering on', key, req.query[key]);
+      if (validFields.includes(key)) {
+        fieldsToUpdate[key] = req.body[key];
+      }
+      // standard and guest users can't make themselves admin!
+      if (key === 'role' && requestorRole === 'admin') {
+        fieldsToUpdate.role = req.body.role;
+      }
+    });
+    console.log('fieldsToUpdate:', fieldsToUpdate);
+    const allowedToUpdate = ((requestorRole === 'admin')
+      || (requestorRole === 'standard' && requestorId === id));
+    console.log('allowedToUpdate', allowedToUpdate);
+    if (allowedToUpdate) {
+      User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+        .select('-password')
+        .then((updatedUser) => {
+          if (updatedUser.error) return res.status(400).send(updatedUser.error.message);
+          console.log('updatedUser', updatedUser);
+          return res.status(200).send(updatedUser);
+        }).catch(err => res.status(400).send(err.message));
+    } else {
+      res.status(400).send('Not allowed to update this user.');
+    }
+  }
+  // ToDo.findById(id).then((todo) => {
+  //   if (!todo) {
+  //     res.status(404).send('No record with this ID');
+  //   } else if (todo._creator.equals(req.user._id)) {
+  //     const { text, completed } = req.body;
+  //     const updatedToDo = { text, completed };
+  //     if (completed === true) {
+  //       updatedToDo.completedAt = new Date().getTime();
+  //     } else {
+  //       updatedToDo.completed = false;
+  //       updatedToDo.completedAt = null;
+  //     }
+  //     ToDo.findByIdAndUpdate(id, { $set: updatedToDo }, { new: true }).then((updated) => {
+  //       res.status(200).send({ todo: updated });
+  //     }).catch(err => res.status(400).send(err.message));
+  //   } else {
+  //     res.status(401).send('This record is owned by another user');
+  //   }
+  // });
+  // res.send({ message: 'PATCH /users/:id is still TBD' });
 };
 // delete the specified user (multiple deletion not supported)
 const deleteUser = (req, res) => {

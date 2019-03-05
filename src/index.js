@@ -3,7 +3,6 @@ require('dotenv').config(); // import environment variables from .env file
 const express = require('express'); // node.js web application framework
 const https = require('https'); // support for https connections
 const fs = require('fs'); // filesystem access for https certificate and key
-const mongoose = require('mongoose'); // manage connections to MongoDB
 const bodyParser = require('body-parser'); // middleware: format responses
 const morgan = require('morgan'); // middleware: logging framework
 const cors = require('cors'); // middleware: support CORS requests
@@ -21,37 +20,14 @@ if (env === 'development') {
   process.env.MONGODB_URI = process.env.DB_TEST_URI;
 }
 if (!process.env.JWT_SECRET) {
-  logger('warning', '*** Warning: default JWT secret is being used ***');
+  logger('warning')('*** Warning: default JWT secret is being used ***');
   process.env.JWT_SECRET = 'insecure if environment variable not set';
 }
 const httpsKey = process.env.HTTPS_KEY || './certs/localhost-key.pem';
 const httpsCert = process.env.HTTPS_CERT || './certs/localhost.pem';
 
 // Database setup
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useCreateIndex: true,
-  useFindAndModify: false,
-});
-mongoose.connection.on('connected', () => {
-  logger('success', new Date(), '\n -> Mongoose connected to', process.env.MONGODB_URI);
-});
-mongoose.connection.on('disconnected', () => {
-  logger('error', new Date(), '\n -> Mongoose disconnected from', process.env.MONGODB_URI);
-});
-mongoose.connection.on('error', (err) => {
-  if (err.message.match(/failed to connect to server .* on first connect/)) {
-    logger('fatalError', new Date(), '\n -> Mongoose unable to connect to database, it is running?');
-    process.exit(0);
-  }
-  logger('error', new Date(), '\n -> Mongoose error:', err.message);
-});
-process.on('SIGINT', () => {
-  mongoose.connection.close(() => {
-    logger('fatalError', new Date(), '\n -> Mongoose disconnected on application termination');
-    process.exit(0);
-  });
-});
+require('./utils/db');
 
 // App setup
 app.use(morgan('dev')); // middleware: logging framework for requests
@@ -66,6 +42,6 @@ const server = https.createServer({ // https is essential to protect data in tra
   cert: fs.readFileSync(httpsCert),
 }, app); // forward anything to the app instance
 server.listen(port);
-logger('success', 'HTTPS server listening on port: ', port);
+logger('success')('HTTPS server listening on port:', port);
 
 module.exports = { server }; // for test scripts

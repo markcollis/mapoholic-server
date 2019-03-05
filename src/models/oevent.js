@@ -95,6 +95,7 @@ const mapSchema = new mongoose.Schema({
     postedAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   }],
+  active: { type: Boolean, default: true }, // set to false on 'deletion', recovery by db admin only
 }, { timestamps: true });
 
 // define model for event (and embedded map) information
@@ -114,6 +115,7 @@ const oeventSchema = new mongoose.Schema({
   results: { type: String, validate: value => validator.isURL(value) },
   maps: [mapSchema],
   lastModified: { type: Date },
+  active: { type: Boolean, default: true }, // set to false on 'deletion', recovery by db admin only
 }, { timestamps: true });
 
 // create model class

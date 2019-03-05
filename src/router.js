@@ -19,9 +19,11 @@ const publicRoute = (req, res, next) => { // anonymous access permitted, take ca
 module.exports = (app) => {
   // *** /users routes ***  [User model]
   // create a user account, receive a token in return
-  app.post('/users/signup', Authentication.signup);
+  app.post('/users/', Authentication.signup);
   // log in to an existing user account, getting a token in return
   app.post('/users/login', requireLogin, Authentication.login);
+  // reset password of specified user
+  app.post('/users/:id/password', requireAuth, Authentication.passwordChange);
   // retrieve a list of all users (ids) matching specified criteria
   app.get('/users', requireAuth, Users.getUserList);
   app.get('/users/public', publicRoute, Users.getUserList);

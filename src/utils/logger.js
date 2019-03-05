@@ -2,7 +2,7 @@
 /* eslint no-console: 0 */
 const chalk = require('chalk');
 
-module.exports = (logType, ...contents) => {
+module.exports = logType => (...contents) => {
   const joinedContents = contents.join(' ');
   let output;
   switch (logType) {
