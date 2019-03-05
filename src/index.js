@@ -12,6 +12,7 @@ const chalk = require('chalk'); // colours for console logs
 const app = express(); // create an instance of express to use
 const router = require('./router');
 
+// configuration based on environment variables
 const port = process.env.PORT || 3090;
 const env = process.env.NODE_ENV || 'development';
 if (env === 'development') {
@@ -32,7 +33,6 @@ mongoose.connect(process.env.MONGODB_URI, {
   useCreateIndex: true,
   useFindAndModify: false,
 });
-
 mongoose.connection.on('connected', () => {
   console.log(chalk.green(new Date(), '\n -> Mongoose connected to', process.env.MONGODB_URI));
 });
@@ -61,7 +61,7 @@ app.use(bodyParser.json({ type: '*/*' })); // middleware: treat ALL incoming req
 router(app);
 
 // Server setup (get express to talk to the outside world...)
-const server = https.createServer({
+const server = https.createServer({ // https is essential to protect data in transit
   key: fs.readFileSync(httpsKey),
   cert: fs.readFileSync(httpsCert),
 }, app); // forward anything to the app instance

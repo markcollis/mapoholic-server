@@ -1,26 +1,28 @@
 const jwt = require('jwt-simple');
 const chalk = require('chalk');
 const User = require('../models/user');
-// const Profile = require('../models/profile');
+const { logReq } = require('./logReq');
 
 const tokenForUser = (user) => {
   const timestamp = new Date().getTime();
-  console.log('user _id for token:', user._id);
+  // console.log('user _id for token:', user._id);
   return jwt.encode({ sub: user._id, iat: timestamp }, process.env.JWT_SECRET);
   // sub = subject (token owner), iat = issued at time (reference at jtw.io)
 };
 
 const login = (req, res) => {
-  console.log('received login POST request');
-  console.log('req.body:', req.body); // shows password in plaintext - DEV ONLY!
-  console.log('req.user:', req.user);
+  logReq(req); // WARNING - shows password as plain text
+  // console.log('received login POST request');
+  // console.log('req.body:', req.body); // shows password in plaintext - DEV ONLY!
+  // console.log('req.user:', req.user);
   // already authenticated, just need to issue a token
   res.json({ token: tokenForUser(req.user) });
 };
 
 const signup = (req, res, next) => {
-  console.log('received signup POST request');
-  console.log('req.body:', req.body); // shows password in plaintext - DEV ONLY!
+  logReq(req); // WARNING - shows password as plain text
+  // console.log('received signup POST request');
+  // console.log('req.body:', req.body); // shows password in plaintext - DEV ONLY!
   const { email, password } = req.body;
   if (!email || !password) {
     console.log(chalk.red('Signup error: Either email address or password missing'));
@@ -44,21 +46,9 @@ const signup = (req, res, next) => {
     // console.log('newUser', newUser);
     return newUser.save((saveUserErr) => {
       if (saveUserErr) return next(saveUserErr);
-      // const newProfile = new Profile({
-      //   user: newUser._id,
-      //   displayName: newUser.email,
-      // });
-      console.log('new user created:', newUser);
+      console.log(chalk.green('New user created:', newUser));
       // return token if successful
       return res.json({ token: tokenForUser(newUser) });
-      // return newProfile.save((saveProfileErr) => {
-      //   if (saveProfileErr) {
-      //     return User.findOneAndDelete({ _id: newUser._id }).then(() => {
-      //       return next(saveProfileErr);
-      //     });
-      //   }
-      //   console.log('new profile created:', newProfile);
-      // });
     });
   });
   return true;

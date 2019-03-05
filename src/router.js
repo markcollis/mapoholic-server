@@ -9,15 +9,15 @@ const Users = require('./controllers/users');
 require('./services/passport'); // passport config
 
 // each route should have one of these three middleware options to set req.user
-const requireAuth = passport.authenticate('jwt', { session: false });
-const requireLogin = passport.authenticate('local', { session: false });
-const publicRoute = (req, res, next) => {
+const requireAuth = passport.authenticate('jwt', { session: false }); // bearer token in header
+const requireLogin = passport.authenticate('local', { session: false }); // request token
+const publicRoute = (req, res, next) => { // anonymous access permitted, take care to limit response
   req.user = { role: 'anonymous' };
   next();
 };
 
 module.exports = (app) => {
-  //    *** /users routes ***  [Users and Profile models]
+  // *** /users routes ***  [User model]
   // create a user account, receive a token in return
   app.post('/users/signup', Authentication.signup);
   // log in to an existing user account, getting a token in return
@@ -35,8 +35,7 @@ module.exports = (app) => {
   // delete the specified user (multiple deletion not supported)
   app.delete('/users/:id', requireAuth, Users.deleteUser);
 
-
-  //    *** /clubs routes ***  [Club model]
+  // *** /clubs routes ***  [Club model]
   // create a club
   app.post('/clubs', requireAuth, (req, res) => {
     res.send({ message: 'POST /clubs is still TBD' });
@@ -58,8 +57,7 @@ module.exports = (app) => {
     res.send({ message: 'DELETE /clubs/:id is still TBD' });
   });
 
-
-  //    *** /events routes ***  [OEvent and LinkedEvent models]
+  // *** /events routes ***  [OEvent and LinkedEvent models]
   // create an event
   app.post('/events', requireAuth, (req, res) => {
     res.send({ message: 'POST /events is still TBD' });

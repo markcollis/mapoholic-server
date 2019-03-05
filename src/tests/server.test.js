@@ -1,35 +1,28 @@
-// current routes on front end are:
-// POST /signup { email, password }
-// expects to receive response.data.token (JWT to store in browser)
-
-// POST /login { email, password }
-// expects to receive response.data.token (JWT to store in browser)
-
 const expect = require('expect');
 const request = require('supertest');
 // const { ObjectID } = require('mongodb');
 
 const { server } = require('../');
 const User = require('../models/user');
+require('../models/club');
 // const Club = require('../models/club');
 // const OEvent = require('../models/oevent');
 // const LinkedEvent = require('../models/linkedEvent');
 
 const {
   initUsers,
-  // initClubs,
+  initUserTokens,
+  initClubs,
   // initOEvents,
   // initLinkedEvents,
   populateUsers, //           independent
   populateClubs, //           requires user_id
-  mapUsersToClubs, //         links to user_id, club_id
   // populateOEvents, //      requires user_id, links to club_id
   // populateLinkedEvents, // interdependent links to oevent_id and from oevent.linkedTo
 } = require('./seed');
 
 beforeEach(populateUsers);
 beforeEach(populateClubs);
-beforeEach(mapUsersToClubs);
 // beforeEach(populateOEvents);
 // beforeEach(populateLinkedEvents);
 
@@ -48,16 +41,15 @@ describe('POST /users/signup', () => {
       })
       .end((err) => {
         if (err) return done(err);
-        console.log('about to search for newUser');
+        // console.log('about to search for newUser');
         return User.find({ email: newUser.email }).then((users) => {
-          console.log(users);
+          // console.log(users);
           expect(users.length).toBe(1);
           expect(users[0].email).toBe('new@user.com');
           done();
         }).catch(e => done(e));
       });
   });
-
   it('should not create a user with invalid data', (done) => {
     const newUser = {
       email: 'anothernew@user.com',
@@ -70,12 +62,11 @@ describe('POST /users/signup', () => {
       .end((err) => {
         if (err) return done(err);
         return User.find().then((users) => {
-          expect(users.length).toBe(2);
+          expect(users.length).toBe(initUsers.length);
           done();
         }).catch(e => done(e));
       });
   });
-
   it('should not create a user if email is already in use', (done) => {
     const newUser = {
       email: initUsers[0].email,
@@ -88,7 +79,7 @@ describe('POST /users/signup', () => {
       .end((err) => {
         if (err) return done(err);
         return User.find().then((users) => {
-          expect(users.length).toBe(2);
+          expect(users.length).toBe(initUsers.length);
           done();
         }).catch(e => done(e));
       });
@@ -112,7 +103,6 @@ describe('POST /users/login', () => {
         return done();
       });
   });
-
   it('should reject an invalid login (bad password)', (done) => {
     request(server)
       .post('/users/login')
@@ -126,7 +116,6 @@ describe('POST /users/login', () => {
         return done();
       });
   });
-
   it('should reject an invalid login (nonexistent user)', (done) => {
     request(server)
       .post('/users/login')
@@ -143,15 +132,254 @@ describe('POST /users/login', () => {
 });
 
 // retrieve a list of all users (ids) matching specified criteria
-describe('GET /users', () => {});
-// retrieve full details for the currently logged in user
-describe('GET /users/me', () => {});
-// retrieve full details for the specified user
-describe('GET /users/:id', () => {});
+describe('GET /users', () => {
+  it('should list all users if called by an admin user', (done) => {
+    request(server)
+      .get('/users')
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.length).toBe(initUsers.length);
+      })
+      .end(done);
+  });
+  it('should list only the correct users selected using query string parameters', (done) => {
+    request(server)
+      .get('/users?DisplayName=User&location=forest')
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.length).toBe(1);
+        expect(res.body[0].user_id).toBe(initUsers[0]._id.toString());
+      })
+      .end(() => {
+        request(server)
+          .get(`/users?memberOf=${initClubs[0]._id}`)
+          .set('Authorization', `bearer ${initUserTokens[0]}`)
+          .expect(200)
+          .expect((res) => {
+            // console.log('res.body:', res.body);
+            expect(res.body.length).toBe(2);
+            expect(res.body[0].user_id).toBe(initUsers[0]._id.toString());
+            expect(res.body[1].user_id).toBe(initUsers[3]._id.toString());
+          })
+          .end(done);
+      });
+  });
+  it('should list only self/public/all/same-club users if called by a guest/std user', (done) => {
+    request(server)
+      .get('/users')
+      .set('Authorization', `bearer ${initUserTokens[3]}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.length).toBe(3);
+      })
+      .end(done);
+  });
+  it('should return an empty array (not 404) if no users match the criteria', (done) => {
+    request(server)
+      .get('/users?fullName=NotRegisteredYet')
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.length).toBe(0);
+      })
+      .end(done);
+  });
+  it('should reject a request without an authorization header', (done) => {
+    request(server)
+      .get('/users')
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.error:', res.error);
+        expect(res.error.text).toBe('Unauthorized');
+      })
+      .end(done);
+  });
+  it('should reject a request with an invalid token', (done) => {
+    request(server)
+      .get('/users')
+      .set('Authorization', 'bearer token1234')
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.error:', res.error);
+        expect(res.error.text).toBe('Unauthorized');
+      })
+      .end(done);
+  });
+});
+
 // retrieve a list of all publicly visible users (ids) matching specified criteria
-describe('GET /users/public', () => {});
+describe('GET /users/public', () => {
+  it('should list all users with visibility set to public', (done) => {
+    request(server)
+      .get('/users/public')
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.length).toBe(1);
+        expect(res.body[0].user_id).toBe(initUsers[2]._id.toString());
+      })
+      .end(done);
+  });
+  it('should list only the correct users selected using query string parameters', (done) => {
+    request(server)
+      .get('/users/public?DisplayName=Guest')
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.length).toBe(1);
+        expect(res.body[0].user_id).toBe(initUsers[2]._id.toString());
+      })
+      .end(done);
+  });
+  it('should return an empty array (not 404) if no users match the criteria', (done) => {
+    request(server)
+      .get('/users/public?fullName=NotRegisteredYet')
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.length).toBe(0);
+      })
+      .end(done);
+  });
+  it('should ignore any bearer token and not check its validity', (done) => {
+    request(server)
+      .get('/users/public')
+      .set('Authorization', 'bearer token1234')
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.length).toBe(1);
+      })
+      .end(done);
+  });
+});
+
+// retrieve full details for the currently logged in user
+describe('GET /users/me', () => {
+  it('should return the user details corresponding to the bearer token in the header', (done) => {
+    request(server)
+      .get('/users/me')
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body._id).toBe(initUsers[0]._id.toString());
+      })
+      .end(done);
+  });
+  it('should reject a request without an authorization header', (done) => {
+    request(server)
+      .get('/users/me')
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.error:', res.error);
+        expect(res.error.text).toBe('Unauthorized');
+      })
+      .end(done);
+  });
+  it('should reject a request with an invalid token', (done) => {
+    request(server)
+      .get('/users/me')
+      .set('Authorization', 'bearer token1234')
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.error:', res.error);
+        expect(res.error.text).toBe('Unauthorized');
+      })
+      .end(done);
+  });
+});
+
+// retrieve full details for the specified user
+describe('GET /users/:id', () => {
+  it('should return the user details matching the specified user id', (done) => {
+    request(server)
+      .get(`/users/${initUsers[0]._id.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[3]}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body._id).toBe(initUsers[0]._id.toString());
+      })
+      .end(done);
+  });
+  it('should reject the request if the user does not have sufficient permissions', (done) => {
+    request(server)
+      .get(`/users/${initUsers[1]._id.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[3]}`)
+      .expect(400)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body._id).toBeFalsy();
+      })
+      .end(done);
+  });
+  it('should reject a request without an authorization header', (done) => {
+    request(server)
+      .get('/users/me')
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.error:', res.error);
+        expect(res.error.text).toBe('Unauthorized');
+      })
+      .end(done);
+  });
+  it('should reject a request with an invalid token', (done) => {
+    request(server)
+      .get('/users/me')
+      .set('Authorization', 'bearer token1234')
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.error:', res.error);
+        expect(res.error.text).toBe('Unauthorized');
+      })
+      .end(done);
+  });
+});
+
+// retrieve full details for the specified user if public
+describe('GET /users/public/:id', () => {
+  it('should return the user details matching the specified user id', (done) => {
+    request(server)
+      .get(`/users/public/${initUsers[2]._id.toString()}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body._id).toBe(initUsers[2]._id.toString());
+      })
+      .end(done);
+  });
+  it('should reject the request if the specified user profile is not public', (done) => {
+    request(server)
+      .get(`/users/public/${initUsers[0]._id.toString()}`)
+      .expect(400)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body._id).toBeFalsy();
+      })
+      .end(done);
+  });
+  it('should ignore any bearer token and not check its validity', (done) => {
+    request(server)
+      .get(`/users/public/${initUsers[2]._id.toString()}`)
+      .set('Authorization', 'bearer token1234')
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body._id).toBe(initUsers[2]._id.toString());
+      })
+      .end(done);
+  });
+});
+
 // update the specified user (multiple amendment not supported)
 describe('PATCH /users/:id', () => {});
+
 // delete the specified user (multiple deletion not supported)
 describe('DELETE /users/:id', () => {});
 
