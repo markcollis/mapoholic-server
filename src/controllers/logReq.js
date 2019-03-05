@@ -1,14 +1,11 @@
 // detailed logging of request to use across all controllers during development
-/* eslint no-console: 0 */
-const chalk = require('chalk');
+const logger = require('../utils/logger');
 
-const logReq = (req) => {
-  console.log(chalk.inverse(req.method, req.url, req.route));
-  console.log(chalk.blue('req.body:', JSON.stringify(req.body)));
-  console.log(chalk.blue('req.params:', JSON.stringify(req.params)));
-  console.log(chalk.blue('req.query:', JSON.stringify(req.query)));
-  console.log(chalk.blue('req.user:', JSON.stringify(req.user)));
-  console.log(chalk.inverse('---end of req------------------------------'));
+module.exports = (req) => {
+  logger('separator', req.method, req.url, req.route);
+  logger('info', 'req.body:', JSON.stringify(req.body));
+  logger('info', 'req.params:', JSON.stringify(req.params));
+  logger('info', 'req.query:', JSON.stringify(req.query));
+  logger('info', 'req.user:', JSON.stringify(req.user));
+  logger('separator', '---end of req------------------------------');
 };
-
-module.exports = { logReq };

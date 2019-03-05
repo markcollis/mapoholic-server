@@ -1,12 +1,11 @@
-// const chalk = require('chalk');
 const { ObjectID } = require('mongodb');
 const User = require('../models/user');
 require('../models/club');
-const { logReq } = require('./logReq');
+const logReq = require('./logReq');
 
 // retrieve and format matching user list data
 const findAndReturnUserList = (userSearchCriteria) => {
-  console.log('userSearchCriteria:', JSON.stringify(userSearchCriteria));
+  // console.log('userSearchCriteria:', JSON.stringify(userSearchCriteria));
   return User.find(userSearchCriteria)
     .populate('memberOf', 'shortName')
     .select('-password')
@@ -85,16 +84,15 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
   const requestorClubs = (requestorRole === 'anonymous')
     ? null
     : requestingUser.memberOf.map(club => club._id.toString());
-  console.log('requestor:', requestorRole, requestorId, requestorClubs);
+  // console.log('requestor:', requestorRole, requestorId, requestorClubs);
   return User.findById(userId)
     .populate('memberOf')
     .select('-password')
     .then((profile) => {
       const { visibility, _id, memberOf } = profile;
-      const profileVisibility = visibility;
       const profileUserId = _id.toString();
       const profileClubs = memberOf.map(club => club._id.toString());
-      console.log('target:', profileVisibility, profileUserId, profileClubs);
+      // console.log('target:', visibility, profileUserId, profileClubs);
       // is the requestor allowed to see this user profile or not?
       let allowedToSee = false;
       if (requestorRole === 'admin') allowedToSee = true;
@@ -111,7 +109,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
         if (commonClubs.length > 0) allowedToSee = true;
         // console.log('allowedToSeeClub', allowedToSee);
       }
-      console.log(' -> allowedToSee:', allowedToSee);
+      // console.log(' -> allowedToSee:', allowedToSee);
       if (allowedToSee) {
         return profile;
       }

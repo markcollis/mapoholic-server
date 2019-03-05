@@ -7,10 +7,10 @@ const mongoose = require('mongoose'); // manage connections to MongoDB
 const bodyParser = require('body-parser'); // middleware: format responses
 const morgan = require('morgan'); // middleware: logging framework
 const cors = require('cors'); // middleware: support CORS requests
-const chalk = require('chalk'); // colours for console logs
 
 const app = express(); // create an instance of express to use
-const router = require('./router');
+const router = require('./router'); // routes in seperate file
+const logger = require('./utils/logger'); // central control of logging
 
 // configuration based on environment variables
 const port = process.env.PORT || 3090;
@@ -21,7 +21,7 @@ if (env === 'development') {
   process.env.MONGODB_URI = process.env.DB_TEST_URI;
 }
 if (!process.env.JWT_SECRET) {
-  console.log('*** Warning: default JWT secret is being used ***');
+  logger('warning', '*** Warning: default JWT secret is being used ***');
   process.env.JWT_SECRET = 'insecure if environment variable not set';
 }
 const httpsKey = process.env.HTTPS_KEY || './certs/localhost-key.pem';
@@ -34,27 +34,27 @@ mongoose.connect(process.env.MONGODB_URI, {
   useFindAndModify: false,
 });
 mongoose.connection.on('connected', () => {
-  console.log(chalk.green(new Date(), '\n -> Mongoose connected to', process.env.MONGODB_URI));
+  logger('success', new Date(), '\n -> Mongoose connected to', process.env.MONGODB_URI);
 });
 mongoose.connection.on('disconnected', () => {
-  console.log(chalk.red(new Date(), '\n -> Mongoose disconnected from', process.env.MONGODB_URI));
+  logger('error', new Date(), '\n -> Mongoose disconnected from', process.env.MONGODB_URI);
 });
 mongoose.connection.on('error', (err) => {
   if (err.message.match(/failed to connect to server .* on first connect/)) {
-    console.error(chalk.bold.bgRed(new Date(), '\n -> Mongoose unable to connect to database, it is running?'));
+    logger('fatalError', new Date(), '\n -> Mongoose unable to connect to database, it is running?');
     process.exit(0);
   }
-  console.error(chalk.bold.red(new Date(), '\n -> Mongoose error:', err.message));
+  logger('error', new Date(), '\n -> Mongoose error:', err.message);
 });
 process.on('SIGINT', () => {
   mongoose.connection.close(() => {
-    console.log(chalk.bold.red(new Date(), '\n -> Mongoose disconnected on application termination'));
+    logger('fatalError', new Date(), '\n -> Mongoose disconnected on application termination');
     process.exit(0);
   });
 });
 
 // App setup
-app.use(morgan('dev')); // middleware: logging framework
+app.use(morgan('dev')); // middleware: logging framework for requests
 // output is: method url status response time - response-length
 app.use(cors()); // middleware: support CORS requests from anywhere (OK for dev)
 app.use(bodyParser.json({ type: '*/*' })); // middleware: treat ALL incoming requests as JSON
@@ -66,6 +66,6 @@ const server = https.createServer({ // https is essential to protect data in tra
   cert: fs.readFileSync(httpsCert),
 }, app); // forward anything to the app instance
 server.listen(port);
-console.log('Server listening on port: ', port);
+logger('success', 'HTTPS server listening on port: ', port);
 
 module.exports = { server }; // for test scripts

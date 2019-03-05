@@ -168,7 +168,7 @@ describe('GET /users', () => {
           .end(done);
       });
   });
-  it('should list only self/public/all/same-club users if called by a guest/std user', (done) => {
+  it('should list only self/public/all/relevant club users to a guest/std user', (done) => {
     request(server)
       .get('/users')
       .set('Authorization', `bearer ${initUserTokens[3]}`)
@@ -261,7 +261,7 @@ describe('GET /users/public', () => {
 
 // retrieve full details for the currently logged in user
 describe('GET /users/me', () => {
-  it('should return the user details corresponding to the bearer token in the header', (done) => {
+  it('should return the user details corresponding to the header bearer token', (done) => {
     request(server)
       .get('/users/me')
       .set('Authorization', `bearer ${initUserTokens[0]}`)
@@ -308,7 +308,7 @@ describe('GET /users/:id', () => {
       })
       .end(done);
   });
-  it('should reject the request if the user does not have sufficient permissions', (done) => {
+  it('should reject the request if the user doesn\'t have sufficient permissions', (done) => {
     request(server)
       .get(`/users/${initUsers[1]._id.toString()}`)
       .set('Authorization', `bearer ${initUserTokens[3]}`)

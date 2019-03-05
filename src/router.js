@@ -1,5 +1,5 @@
 // Export routing file that will be used in index.js
-//  where app is the express instance.
+//   where app is the express instance.
 const passport = require('passport');
 const Authentication = require('./controllers/authentication');
 const Users = require('./controllers/users');

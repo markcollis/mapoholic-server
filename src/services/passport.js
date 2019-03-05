@@ -1,8 +1,8 @@
 const passport = require('passport');
 const LocalStrategy = require('passport-local');
 const { Strategy, ExtractJwt } = require('passport-jwt');
-const chalk = require('chalk');
 const User = require('../models/user');
+const logger = require('../utils/logger');
 
 // create local strategy (email/password)
 const localOptions = { usernameField: 'email' };
@@ -12,7 +12,7 @@ const localLogin = new LocalStrategy(localOptions, (email, password, done) => {
     if (errFind) return done(errFind, false);
     if (!user) {
       // if user does not exist, call done without a user
-      console.log(chalk.red(`Local auth strategy error: No such user (${email})`));
+      logger('error', `Local auth strategy error: No such user (${email})`);
       return done(null, false);
     }
     return user.comparePassword(password, (errCompare, isMatch) => {
@@ -20,7 +20,7 @@ const localLogin = new LocalStrategy(localOptions, (email, password, done) => {
       // if valid, call done with the user
       if (isMatch) return done(null, user);
       // if not, call done without a user
-      console.log(chalk.red(`Local auth strategy error: Wrong password (for ${email})`));
+      logger('error', `Local auth strategy error: Wrong password (for ${email})`);
       return done(null, false);
     });
   });
