@@ -12,7 +12,7 @@ const tokenForUser = (user) => {
 const login = (req, res) => {
   logReq(req); // WARNING - shows password as plain text
   // already authenticated, just need to issue a token
-  logger('success')('Successful login by', req.user.email);
+  logger('success')(`Successful login by ${req.user.email}`);
   return res.status(200).send({ token: tokenForUser(req.user) });
 };
 
@@ -21,11 +21,11 @@ const signup = (req, res, next) => {
   const { email, password } = req.body;
   const displayName = req.body.displayName || req.body.email;
   if (!email || !password) {
-    logger('error')('Signup error: Either email address or password missing');
+    logger('error')('Signup error: either email address or password missing.');
     return res.status(400).send({ error: 'You must provide both an email address and a password.' });
   }
   if (password.length < 8) {
-    logger('error')(`Signup error: Password for ${email} is too short.`);
+    logger('error')(`Signup error: password for ${email} is too short.`);
     return res.status(400).send({ error: 'Your password must be at least 8 characters long.' });
   }
   // does a user with the given email or displayName exist?
@@ -60,11 +60,11 @@ const passwordChange = (req, res) => {
   const requestorRole = req.user.role;
   const targetId = req.params.id;
   if (requestorRole === 'guest') {
-    logger('error')('Password change error: guest attempting to change own password');
+    logger('error')('Password change error: guest attempting to change own password.');
     return res.status(400).send({ error: 'Guest accounts are not allowed to change passwords.' });
   }
   if (!currentPassword || !newPassword) {
-    logger('error')('Password change error: password missing');
+    logger('error')('Password change error: password missing.');
     return res.status(400).send({ error: 'You must provide both old and new passwords.' });
   }
   if (newPassword.length < 8) {
@@ -74,16 +74,16 @@ const passwordChange = (req, res) => {
   return req.user.comparePassword(currentPassword, (err, isMatch) => {
     // console.log('isMatch:', isMatch);
     if (err) {
-      logger('error')('Error in comparePassword:', err.message);
+      logger('error')(`Error in comparePassword: ${err.message}.`);
       return res.status(400).send({ error: err.message });
     }
     // if valid, call done with the user
     if (!isMatch) {
-      logger('error')(`Password change error: Wrong password (for ${req.user.email})`);
+      logger('error')(`Password change error: Wrong password (for ${req.user.email}).`);
       return res.status(400).send({ error: 'Current password does not match.' });
     }
     if (requestorId.toString() !== targetId.toString() && requestorRole !== 'admin') {
-      logger('error')('Password change error: insufficient permissions');
+      logger('error')('Password change error: insufficient permissions.');
       return res.status(400).send({ error: 'You are not allowed to change this user\'s password.' });
     }
     return User.findOneAndUpdate({ _id: targetId },
@@ -92,7 +92,7 @@ const passwordChange = (req, res) => {
       .then((updatedUser) => {
         // console.log('updatedUser after password change:', updatedUser);
         logger('success')(`Password for ${updatedUser.email} changed by ${req.user.email}.`);
-        return res.status(200).json('Password changed successfully.');
+        return res.status(200).send({ status: 'Password changed successfully.' });
       }).catch((updateErr) => {
         logger('error')('Error in findOneAndUpdate:', updateErr.message);
         return res.status(400).send({ error: updateErr.message });

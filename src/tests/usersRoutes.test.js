@@ -155,7 +155,7 @@ describe('POST /users/:id/password', () => {
       .expect(200)
       .expect((res) => {
         // console.log('res.body', res.body);
-        expect(res.body).toBe('Password changed successfully.');
+        expect(res.body.status).toBe('Password changed successfully.');
       })
       .then(() => { // now confirm that the password was changed
         request(server)
@@ -180,7 +180,7 @@ describe('POST /users/:id/password', () => {
       .expect(200)
       .expect((res) => {
         // console.log('res.body', res.body);
-        expect(res.body).toBe('Password changed successfully.');
+        expect(res.body.status).toBe('Password changed successfully.');
       })
       .then(() => { // now confirm that the password was changed
         request(server)
@@ -597,7 +597,8 @@ describe('PATCH /users/:id', () => {
       .expect(400)
       .expect((res) => {
         // console.log('res.error:', res.error);
-        expect(res.body.error).toContain('duplicate key error');
+        expect(res.body.error).toBe(`${initUsers[1].email} is already in use.`);
+        // expect(res.body.error).toBe(`${initUsers[2].displayName} is already in use.`);
       })
       .end(done);
   });

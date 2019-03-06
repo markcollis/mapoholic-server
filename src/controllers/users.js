@@ -133,7 +133,7 @@ const getLoggedInUser = (req, res) => {
       logger('error')('Error fetching own user details: no matching user found');
       return res.status(404).send({ error: 'User details could not be found.' });
     }
-    logger('success')('Returned user details for', userDetails.email);
+    logger('success')(`Returned user details for ${userDetails.email}.`);
     return res.status(200).send(userDetails);
   })
     .catch((err) => {
@@ -194,20 +194,24 @@ const updateUser = (req, res) => {
       fieldsToUpdate.role = req.body.role;
     }
   });
-  console.log('fieldsToUpdate:', fieldsToUpdate);
+  // console.log('fieldsToUpdate:', fieldsToUpdate);
   const allowedToUpdate = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === id));
-  console.log('allowedToUpdate', allowedToUpdate);
+  // console.log('allowedToUpdate', allowedToUpdate);
   if (allowedToUpdate) {
     return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
       .select('-password')
       .then((updatedUser) => {
-        if (updatedUser.error) return res.status(400).send(updatedUser.error.message);
-        console.log('updatedUser', updatedUser);
+        // console.log('updatedUser', updatedUser);
         logger('success')(`${updatedUser.email} updated by ${req.user.email}.`);
         return res.status(200).send(updatedUser);
       })
       .catch((err) => {
+        if (err.message.slice(0, 6) === 'E11000') {
+          const duplicate = err.message.split('"')[1];
+          logger('error')(`Error updating user: duplicate value ${duplicate}.`);
+          return res.status(400).send({ error: `${duplicate} is already in use.` });
+        }
         logger('error')('Error updating user:', err.message);
         return res.status(400).send({ error: err.message });
       });
@@ -234,7 +238,7 @@ const deleteUser = (req, res) => {
       .select('-password')
       .then((deletedUser) => {
         if (!deletedUser) {
-          logger('error')('Error deleting user: no matching user found');
+          logger('error')('Error deleting user: no matching user found.');
           return res.status(404).send({ error: 'User could not be found.' });
         }
         // console.log('deletedUser', deletedUser);
