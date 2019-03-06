@@ -1,6 +1,7 @@
 const { ObjectID } = require('mongodb');
 const User = require('../models/user');
 require('../models/club');
+const logger = require('../utils/logger');
 const logReq = require('./logReq');
 
 // retrieve and format matching user list data
@@ -10,6 +11,7 @@ const findAndReturnUserList = (userSearchCriteria) => {
     .populate('memberOf', 'shortName')
     .select('-password')
     .then((profiles) => {
+      if (profiles.length === 0) return [];
       // reformat into short summary of key data
       return profiles.map((profile) => {
         const clubList = (profile.memberOf.length > 0)
@@ -68,10 +70,11 @@ const getUserList = (req, res) => {
     }
   }
   findAndReturnUserList(userSearchCriteria).then((userList) => {
-    if (userList.error) return res.status(400).send(userList.error.message);
+    logger('success')(`Returned list of ${userList.length} user(s).`);
     return res.status(200).send(userList);
   }, (err) => {
-    res.status(400).send(err.message);
+    logger('error')('Error getting list of users:', err.message);
+    return res.status(400).send(err.message);
   });
 };
 
@@ -90,6 +93,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
     .populate('memberOf')
     .select('-password')
     .then((profile) => {
+      if (!profile) return { searchError: true };
       const { visibility, _id, memberOf } = profile;
       const profileUserId = _id.toString();
       const profileClubs = memberOf.map(club => club._id.toString());
@@ -114,26 +118,48 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
       if (allowedToSee) {
         return profile;
       }
-      return { error: { message: 'Not authorised to view this profile.' } };
+      return { authError: true };
     });
 };
 // retrieve full details for the currently logged in user
 const getLoggedInUser = (req, res) => {
   logReq(req);
   findAndReturnUserDetails(req.user)(req.user._id).then((userDetails) => {
-    if (userDetails.error) return res.status(400).send(userDetails.error.message);
-    if (!userDetails._id) return res.status(400).send('User details could not be found.');
+    if (userDetails.authError) {
+      logger('error')(`Error: ${req.user.email} is not authorised to view their own details!`);
+      return res.status(401).send({ error: 'Not authorised to view user details.' });
+    }
+    if (userDetails.searchError || !userDetails._id) {
+      logger('error')('Error fetching own user details: no matching user found');
+      return res.status(404).send({ error: 'User details could not be found.' });
+    }
+    logger('success')('Returned user details for', userDetails.email);
     return res.status(200).send(userDetails);
-  }).catch(e => res.status(400).send(e.message));
+  })
+    .catch((err) => {
+      logger('error')('Error getting own user details:', err.message);
+      return res.status(400).send({ error: err.message });
+    });
 };
 // retrieve full details for the specified user
 const getUserById = (req, res) => {
   logReq(req);
-  findAndReturnUserDetails(req.user)(req.params.id, res).then((userDetails) => {
-    if (userDetails.error) return res.status(400).send(userDetails.error.message);
-    if (!userDetails._id) return res.status(400).send('User details could not be found.');
+  findAndReturnUserDetails(req.user)(req.params.id).then((userDetails) => {
+    if (userDetails.authError) {
+      logger('error')(`Error: ${req.user.email} is not authorised to view ${req.params.id}`);
+      return res.status(401).send({ error: 'Not authorised to view user details.' });
+    }
+    if (!userDetails._id) {
+      logger('error')('Error fetching user details: no matching user found');
+      return res.status(404).send({ error: 'User details could not be found.' });
+    }
+    logger('success')(`Returned user details for ${userDetails.email} to ${req.user.email}.`);
     return res.status(200).send(userDetails);
-  }).catch(e => res.status(400).send(e.message));
+  })
+    .catch((err) => {
+      logger('error')('Error getting user details:', err.message);
+      return res.status(400).send({ error: err.message });
+    });
 };
 
 // update the specified user (multiple amendment not supported)
@@ -143,71 +169,85 @@ const updateUser = (req, res) => {
   const requestorRole = req.user.role;
   const requestorId = req.user._id.toString();
   if (!ObjectID.isValid(id)) {
-    res.status(404).send('Invalid ID');
-  } else {
-    const fieldsToUpdate = {};
-    const validFields = [ // password needs a separate hook in authentication
-      'email',
-      'visibility',
-      'displayName',
-      'fullName',
-      'location',
-      'about',
-      'contact',
-      'memberOf',
-      'profileImage', // path to uploaded image will need to be set in middleware
-    ];
-    Object.keys(req.body).forEach((key) => {
-      // console.log('filtering on', key, req.query[key]);
-      if (validFields.includes(key)) {
-        fieldsToUpdate[key] = req.body[key];
-      }
-      // standard and guest users can't make themselves admin!
-      if (key === 'role' && requestorRole === 'admin') {
-        fieldsToUpdate.role = req.body.role;
-      }
-    });
-    console.log('fieldsToUpdate:', fieldsToUpdate);
-    const allowedToUpdate = ((requestorRole === 'admin')
-      || (requestorRole === 'standard' && requestorId === id));
-    console.log('allowedToUpdate', allowedToUpdate);
-    if (allowedToUpdate) {
-      User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
-        .select('-password')
-        .then((updatedUser) => {
-          if (updatedUser.error) return res.status(400).send(updatedUser.error.message);
-          console.log('updatedUser', updatedUser);
-          return res.status(200).send(updatedUser);
-        }).catch(err => res.status(400).send(err.message));
-    } else {
-      res.status(400).send('Not allowed to update this user.');
-    }
+    logger('error')('Error updating user: invalid user id.');
+    return res.status(404).send({ error: 'Invalid ID.' });
   }
-  // ToDo.findById(id).then((todo) => {
-  //   if (!todo) {
-  //     res.status(404).send('No record with this ID');
-  //   } else if (todo._creator.equals(req.user._id)) {
-  //     const { text, completed } = req.body;
-  //     const updatedToDo = { text, completed };
-  //     if (completed === true) {
-  //       updatedToDo.completedAt = new Date().getTime();
-  //     } else {
-  //       updatedToDo.completed = false;
-  //       updatedToDo.completedAt = null;
-  //     }
-  //     ToDo.findByIdAndUpdate(id, { $set: updatedToDo }, { new: true }).then((updated) => {
-  //       res.status(200).send({ todo: updated });
-  //     }).catch(err => res.status(400).send(err.message));
-  //   } else {
-  //     res.status(401).send('This record is owned by another user');
-  //   }
-  // });
-  // res.send({ message: 'PATCH /users/:id is still TBD' });
+  const fieldsToUpdate = {};
+  const validFields = [ // password needs a separate hook in authentication
+    'email',
+    'visibility',
+    'displayName',
+    'fullName',
+    'location',
+    'about',
+    'contact',
+    'memberOf',
+    'profileImage', // path to uploaded image will need to be set in middleware
+  ];
+  Object.keys(req.body).forEach((key) => {
+    // console.log('filtering on', key, req.query[key]);
+    if (validFields.includes(key)) {
+      fieldsToUpdate[key] = req.body[key];
+    }
+    // standard and guest users can't make themselves admin!
+    if (key === 'role' && requestorRole === 'admin') {
+      fieldsToUpdate.role = req.body.role;
+    }
+  });
+  console.log('fieldsToUpdate:', fieldsToUpdate);
+  const allowedToUpdate = ((requestorRole === 'admin')
+    || (requestorRole === 'standard' && requestorId === id));
+  console.log('allowedToUpdate', allowedToUpdate);
+  if (allowedToUpdate) {
+    return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+      .select('-password')
+      .then((updatedUser) => {
+        if (updatedUser.error) return res.status(400).send(updatedUser.error.message);
+        console.log('updatedUser', updatedUser);
+        logger('success')(`${updatedUser.email} updated by ${req.user.email}.`);
+        return res.status(200).send(updatedUser);
+      })
+      .catch((err) => {
+        logger('error')('Error updating user:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
+  }
+  logger('error')(`Error: ${req.user.email} not allowed to update ${id}.`);
+  return res.status(401).send({ error: 'Not allowed to update this user.' });
 };
+
 // delete the specified user (multiple deletion not supported)
 const deleteUser = (req, res) => {
   logReq(req);
-  res.send({ message: 'DELETE /users:id is still TBD' });
+  const { id } = req.params;
+  const requestorRole = req.user.role;
+  const requestorId = req.user._id.toString();
+  if (!ObjectID.isValid(id)) {
+    logger('error')('Error deleting user: invalid user id.');
+    return res.status(404).send({ error: 'Invalid ID.' });
+  }
+  const allowedToDelete = ((requestorRole === 'admin')
+    || (requestorRole === 'standard' && requestorId === id));
+  // console.log('allowedToDelete', allowedToDelete);
+  if (allowedToDelete) {
+    return User.findByIdAndUpdate(id, { $set: { active: false } }, { new: true })
+      .select('-password')
+      .then((deletedUser) => {
+        if (!deletedUser) {
+          logger('error')('Error deleting user: no matching user found');
+          return res.status(404).send({ error: 'User could not be found.' });
+        }
+        // console.log('deletedUser', deletedUser);
+        logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
+        return res.status(200).send(deletedUser);
+      })
+      .catch((err) => {
+        logger('error')('Error deleting user:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
+  }
+  logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
+  return res.status(401).send({ error: 'Not allowed to delete this user.' });
 };
 
 module.exports = {

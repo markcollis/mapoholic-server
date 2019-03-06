@@ -1,6 +1,6 @@
 const expect = require('expect');
 const request = require('supertest');
-// const { ObjectID } = require('mongodb');
+const { ObjectID } = require('mongodb');
 
 const { server } = require('../');
 const User = require('../models/user');
@@ -271,6 +271,30 @@ describe('POST /users/:id/password', () => {
       })
       .catch(e => done(e));
   });
+  it('should reject a request without an authorization header', (done) => {
+    const updateToSend = {
+      currentPassword: initUsers[0].password,
+      newPassword: 'somethingDifferent',
+    };
+    request(server)
+      .post(`/users/${initUsers[0]._id.toString()}/password`)
+      .send(updateToSend)
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.error:', res.error);
+        expect(res.error.text).toBe('Unauthorized');
+      })
+      .then(() => { // now confirm that the password wasn't actually changed!
+        request(server)
+          .post('/users/login')
+          .send({
+            email: initUsers[0].email,
+            password: initUsers[0].password,
+          })
+          .expect(200, done);
+      })
+      .catch(e => done(e));
+  });
 });
 
 // retrieve a list of all users (ids) matching specified criteria
@@ -454,10 +478,10 @@ describe('GET /users/:id', () => {
     request(server)
       .get(`/users/${initUsers[1]._id.toString()}`)
       .set('Authorization', `bearer ${initUserTokens[3]}`)
-      .expect(400)
+      .expect(401)
       .expect((res) => {
         // console.log('res.body:', res.body);
-        expect(res.body._id).toBeFalsy();
+        expect(res.body.error).toBe('Not authorised to view user details.');
       })
       .end(done);
   });
@@ -465,10 +489,22 @@ describe('GET /users/:id', () => {
     request(server)
       .get(`/users/${deletedUser._id.toString()}`)
       .set('Authorization', `bearer ${initUserTokens[0]}`)
-      .expect(400)
+      .expect(404)
       .expect((res) => {
         // console.log('res.body:', res.body);
-        expect(res.body._id).toBeFalsy();
+        expect(res.body.error).toBe('User details could not be found.');
+      })
+      .end(done);
+  });
+  it('should respond with a 404 error to a valid but non-existent ID', (done) => {
+    const testId = new ObjectID();
+    request(server)
+      .get(`/users/${testId.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(404)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.error).toBe('User details could not be found.');
       })
       .end(done);
   });
@@ -510,10 +546,10 @@ describe('GET /users/public/:id', () => {
   it('should reject the request if the specified user profile is not public', (done) => {
     request(server)
       .get(`/users/public/${initUsers[0]._id.toString()}`)
-      .expect(400)
+      .expect(401)
       .expect((res) => {
         // console.log('res.body:', res.body);
-        expect(res.body._id).toBeFalsy();
+        expect(res.body.error).toBe('Not authorised to view user details.');
       })
       .end(done);
   });
@@ -561,8 +597,7 @@ describe('PATCH /users/:id', () => {
       .expect(400)
       .expect((res) => {
         // console.log('res.error:', res.error);
-        expect(res.body._id).toBeFalsy();
-        expect(res.error.text).toContain('duplicate key error');
+        expect(res.body.error).toContain('duplicate key error');
       })
       .end(done);
   });
@@ -574,27 +609,10 @@ describe('PATCH /users/:id', () => {
       .patch(`/users/${initUsers[0]._id.toString()}`)
       .set('Authorization', `bearer ${initUserTokens[1]}`)
       .send(updateToSend)
-      .expect(400)
+      .expect(401)
       .expect((res) => {
         // console.log('res.error:', res.error);
-        expect(res.body._id).toBeFalsy();
-        expect(res.error.text).toBe('Not allowed to update this user.');
-      })
-      .end(done);
-  });
-  it('should fail to update if the requestor is a guest', (done) => {
-    const updateToSend = {
-      location: 'at home now',
-    };
-    request(server)
-      .patch(`/users/${initUsers[2]._id.toString()}`)
-      .set('Authorization', `bearer ${initUserTokens[2]}`)
-      .send(updateToSend)
-      .expect(400)
-      .expect((res) => {
-        // console.log('res.error:', res.error);
-        expect(res.body._id).toBeFalsy();
-        expect(res.error.text).toBe('Not allowed to update this user.');
+        expect(res.body.error).toBe('Not allowed to update this user.');
       })
       .end(done);
   });
@@ -626,391 +644,78 @@ describe('PATCH /users/:id', () => {
         }).catch(e => done(e));
       });
   });
-  // it('should update the correct todo and set a completedAt time', (done) => {
-  //   request(app)
-  //     .patch(`/todo/${initTodos[0]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .send({
-  //       text: 'something different',
-  //       completed: true,
-  //     })
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.body.todo.text).toBe('something different');
-  //       expect(res.body.todo.completed).toBe(true);
-  //       expect(typeof res.body.todo.completedAt).toBe('number');
-  //     })
-  //     .end(done);
-  // });
-  //
-  // it('should update the correct todo and clear the completedAt time', (done) => {
-  //   request(app)
-  //     .patch(`/todo/${initTodos[1]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[1].tokens[0].token)
-  //     .send({
-  //       text: 'something else different',
-  //       completed: false,
-  //     })
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.body.todo.text).toBe('something else different');
-  //       expect(res.body.todo.completed).toBe(false);
-  //       expect(res.body.todo.completedAt).toBe(null);
-  //     })
-  //     .end(done);
-  // });
-  //
-  // it('should respond with a 404 error to an invalid ID', (done) => {
-  //   request(app)
-  //     .patch('/todo/3971904874890')
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(404)
-  //     .end(done);
-  // });
-  //
-  // it('should respond with a 404 error to a valid but absent ID', (done) => {
-  //   const testId = new ObjectID();
-  //   request(app)
-  //     .patch(`/todo/${testId.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(404)
-  //     .end(done);
-  // });
-  //
-  // it('should respond with a 401 error if not the creator', (done) => {
-  //   request(app)
-  //     .patch(`/todo/${initTodos[1]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .send({
-  //       text: 'something else different',
-  //       completed: false,
-  //     })
-  //     .expect(401)
-  //     .end(done);
-  // });
+  it('should fail to update if the requestor is a guest', (done) => {
+    const updateToSend = {
+      location: 'at home now',
+    };
+    request(server)
+      .patch(`/users/${initUsers[2]._id.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[2]}`)
+      .send(updateToSend)
+      .expect(401)
+      .expect((res) => {
+        expect(res.body.error).toBe('Not allowed to update this user.');
+      })
+      .end(done);
+  });
 });
 
 // delete the specified user (multiple deletion not supported)
-describe('DELETE /users/:id', () => {});
-
-// create a club
-describe('POST /clubs', () => {});
-// retrieve a list of all clubs (ids) matching specified criteria
-describe('GET /clubs', () => {});
-// retrieve full details for the specified club
-describe('GET /clubs/:id', () => {});
-// update the specified club (multiple amendment not supported)
-describe('PATCH /clubs/:id', () => {});
-// delete the specified club (multiple deletion not supported)
-describe('DELETE /clubs/:id', () => {});
-
-
-// *** all cases below this line are for reference only and do not relate to this app ***
-
-
-describe('DELETE /todo/:id', () => {
-  // it('should remove the correct todo', (done) => {
-  //   request(app)
-  //     .delete(`/todo/${initTodos[0]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.body.todo.text).toBe(initTodos[0].text);
-  //     })
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return ToDo.find().then((todos) => {
-  //         expect(todos.length).toBe(1);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-  //
-  // it('should respond with a 404 error to an invalid ID', (done) => {
-  //   request(app)
-  //     .delete('/todo/3971904874890')
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(404)
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return ToDo.find().then((todos) => {
-  //         expect(todos.length).toBe(2);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-  //
-  // it('should repond with a 404 error to a valid but absent ID', (done) => {
-  //   const testId = new ObjectID();
-  //   request(app)
-  //     .delete(`/todo/${testId.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(404)
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return ToDo.find().then((todos) => {
-  //         expect(todos.length).toBe(2);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-  //
-  // it('should repond with a 401 error if not the creator', (done) => {
-  //   request(app)
-  //     .delete(`/todo/${initTodos[1]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(401)
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return ToDo.find().then((todos) => {
-  //         expect(todos.length).toBe(2);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-});
-
-describe('PATCH /todo/:id', () => {
-  // it('should update the correct todo and set a completedAt time', (done) => {
-  //   request(app)
-  //     .patch(`/todo/${initTodos[0]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .send({
-  //       text: 'something different',
-  //       completed: true,
-  //     })
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.body.todo.text).toBe('something different');
-  //       expect(res.body.todo.completed).toBe(true);
-  //       expect(typeof res.body.todo.completedAt).toBe('number');
-  //     })
-  //     .end(done);
-  // });
-  //
-  // it('should update the correct todo and clear the completedAt time', (done) => {
-  //   request(app)
-  //     .patch(`/todo/${initTodos[1]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[1].tokens[0].token)
-  //     .send({
-  //       text: 'something else different',
-  //       completed: false,
-  //     })
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.body.todo.text).toBe('something else different');
-  //       expect(res.body.todo.completed).toBe(false);
-  //       expect(res.body.todo.completedAt).toBe(null);
-  //     })
-  //     .end(done);
-  // });
-  //
-  // it('should respond with a 404 error to an invalid ID', (done) => {
-  //   request(app)
-  //     .patch('/todo/3971904874890')
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(404)
-  //     .end(done);
-  // });
-  //
-  // it('should respond with a 404 error to a valid but absent ID', (done) => {
-  //   const testId = new ObjectID();
-  //   request(app)
-  //     .patch(`/todo/${testId.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(404)
-  //     .end(done);
-  // });
-  //
-  // it('should respond with a 401 error if not the creator', (done) => {
-  //   request(app)
-  //     .patch(`/todo/${initTodos[1]._id.toHexString()}`)
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .send({
-  //       text: 'something else different',
-  //       completed: false,
-  //     })
-  //     .expect(401)
-  //     .end(done);
-  // });
-});
-
-describe('POST /user', () => {
-  // it('should create a new user', (done) => {
-  //   const newUser = {
-  //     email: 'new@user.com',
-  //     password: 'passwordfornewuser',
-  //   };
-  //   request(app)
-  //     .post('/user')
-  //     .send(newUser)
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.body._id).toBeTruthy();
-  //       expect(res.body.email).toBe(newUser.email);
-  //       const headerAuth = res.header['x-auth'];
-  //       User.findOne({ _id: res.body._id }).then((user) => {
-  //         expect(headerAuth).toBe(user.tokens[0].token);
-  //       });
-  //     })
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return User.find({ email: newUser.email }).then((users) => {
-  //         expect(users.length).toBe(1);
-  //         expect(users[0].email).toBe('new@user.com');
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-  //
-  // it('should not create a user with invalid data', (done) => {
-  //   const newUser = {
-  //     email: 'anothernew@user.com',
-  //     password: '123',
-  //   };
-  //   request(app)
-  //     .post('/user')
-  //     .send(newUser)
-  //     .expect(400)
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return User.find().then((users) => {
-  //         expect(users.length).toBe(2);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-  //
-  // it('should not create a user if email is already in use', (done) => {
-  //   const newUser = {
-  //     email: 'mark@example.com',
-  //     password: 'I have signed up already',
-  //   };
-  //   request(app)
-  //     .post('/user')
-  //     .send(newUser)
-  //     .expect(400)
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return User.find().then((users) => {
-  //         expect(users.length).toBe(2);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-});
-
-describe('GET /user/me', () => {
-  // it('should retrieve details of the currently authenticated user', (done) => {
-  //   request(app)
-  //     .get('/user/me')
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.body.email).toBe(initUsers[0].email);
-  //     })
-  //     .end(done);
-  // });
-  //
-  // it('should return a 401 status if not authenticated', (done) => {
-  //   request(app)
-  //     .get('/user/me')
-  //     .expect(401)
-  //     .expect((res) => {
-  //       expect(res.text).toBe('Authentication failed.');
-  //       expect(res.body).toEqual({});
-  //     })
-  //     .end(done);
-  // });
-  //
-  // it('should return a 401 status if auth token valid but user not found', (done) => {
-  //   request(app)
-  //     .get('/user/me')
-  //     .set('x-auth', 'ey...64')
-  //     .expect(401)
-  //     .expect((res) => {
-  //       expect(res.text).toBe('Authentication failed.');
-  //       expect(res.body).toEqual({});
-  //     })
-  //     .end(done);
-  // });
-});
-
-describe('POST /user/login', () => {
-  // it('should login user and return auth token', (done) => {
-  //   request(app)
-  //     .post('/user/login')
-  //     .send({
-  //       email: initUsers[1].email,
-  //       password: initUsers[1].password,
-  //     })
-  //     .expect(200)
-  //     .expect((res) => {
-  //       expect(res.headers['x-auth']).toBeTruthy();
-  //     })
-  //     .end((err, res) => {
-  //       if (err) return done(err);
-  //       return User.findById(initUsers[1]._id).then((user) => {
-  //         expect(user.tokens[1]).toHaveProperty('access', 'auth');
-  //         expect(user.tokens[1]).toHaveProperty('token', res.headers['x-auth']);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-  //
-  // it('should reject an invalid login (bad password)', (done) => {
-  //   request(app)
-  //     .post('/user/login')
-  //     .send({
-  //       email: initUsers[1].email,
-  //       password: 'wrong',
-  //     })
-  //     .expect(401)
-  //     .expect((res) => {
-  //       expect(res.headers['x-auth']).toBeFalsy();
-  //     })
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return User.findById(initUsers[1]._id).then((user) => {
-  //         expect(user.tokens.length).toBe(1);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-  //
-  // it('should reject an invalid login (nonexistent user)', (done) => {
-  //   request(app)
-  //     .post('/user/login')
-  //     .send({
-  //       email: 'wrong@wrong.com',
-  //       password: 'wrong',
-  //     })
-  //     .expect(401)
-  //     .expect((res) => {
-  //       expect(res.headers['x-auth']).toBeFalsy();
-  //     })
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return User.findById(initUsers[1]._id).then((user) => {
-  //         expect(user.tokens.length).toBe(1);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
-});
-
-describe('DELETE /user/me/token', () => {
-  // it('should remove auth token on logout', (done) => {
-  //   request(app)
-  //     .delete('/user/me/token')
-  //     .set('x-auth', initUsers[0].tokens[0].token)
-  //     .expect(200)
-  //     .end((err) => {
-  //       if (err) return done(err);
-  //       return User.findById(initUsers[0]._id).then((user) => {
-  //         expect(user.tokens.length).toBe(0);
-  //         done();
-  //       }).catch(e => done(e));
-  //     });
-  // });
+describe('DELETE /users/:id', () => {
+  it('should delete the correct user (set active=false)', (done) => {
+    request(server)
+      .delete(`/users/${initUsers[0]._id.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(200)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.active).toBe(false);
+      })
+      .end(done);
+  });
+  it('should respond with a 404 error to an invalid ID', (done) => {
+    request(server)
+      .delete('/users/1234567890')
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(404)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.error).toBe('Invalid ID.');
+      })
+      .end(done);
+  });
+  it('should respond with a 404 error to a valid but absent ID', (done) => {
+    const testId = new ObjectID();
+    request(server)
+      .delete(`/users/${testId.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[0]}`)
+      .expect(404)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.error).toBe('User could not be found.');
+      })
+      .end(done);
+  });
+  it('should repond with a 401 error if a standard user tries to delete another', (done) => {
+    request(server)
+      .delete(`/users/${initUsers[0]._id.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[1]}`)
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.error).toBe('Not allowed to delete this user.');
+      })
+      .end(done);
+  });
+  it('should repond with a 401 error if a guest user tries to delete themselves', (done) => {
+    request(server)
+      .delete(`/users/${initUsers[2]._id.toString()}`)
+      .set('Authorization', `bearer ${initUserTokens[2]}`)
+      .expect(401)
+      .expect((res) => {
+        // console.log('res.body:', res.body);
+        expect(res.body.error).toBe('Not allowed to delete this user.');
+      })
+      .end(done);
+  });
 });

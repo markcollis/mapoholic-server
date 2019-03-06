@@ -58,12 +58,12 @@ userSchema.pre('save', function hashPassword(next) { // run this before saving a
 // on findOneAndUpdate hook, encrypt password if it is in the query
 userSchema.pre('findOneAndUpdate', function hashPassword(next) {
   const query = this; // i.e. this instance
-  console.log('query._update:', query._update);
-  console.log('hashPassword called for', query._conditions._id);
+  // console.log('query._update:', query._update);
+  // console.log('hashPassword called for', query._conditions._id);
   if (!query._update.$set.password) { // otherwise the existing hash would be hashed again
     return next();
   }
-  console.log('Password being hashed');
+  // console.log('Password being hashed');
   return bcrypt.genSalt(10, (err, salt) => { // generate salt then run callback
     if (err) return next(err);
     return bcrypt.hash(query._update.$set.password, salt, null, (err2, hash) => { // encrypt then...

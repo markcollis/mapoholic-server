@@ -12,7 +12,8 @@ const tokenForUser = (user) => {
 const login = (req, res) => {
   logReq(req); // WARNING - shows password as plain text
   // already authenticated, just need to issue a token
-  res.json({ token: tokenForUser(req.user) });
+  logger('success')('Successful login by', req.user.email);
+  return res.status(200).send({ token: tokenForUser(req.user) });
 };
 
 const signup = (req, res, next) => {
@@ -28,7 +29,7 @@ const signup = (req, res, next) => {
     return res.status(400).send({ error: 'Your password must be at least 8 characters long.' });
   }
   // does a user with the given email or displayName exist?
-  User.findOne({ $or: [{ email }, { displayName }] }, (err, existingUser) => {
+  return User.findOne({ $or: [{ email }, { displayName }] }, (err, existingUser) => {
     // handle database error
     if (err) return next(err);
     // if one does, return an error
@@ -44,12 +45,12 @@ const signup = (req, res, next) => {
     const newUser = new User({ email, password, displayName });
     return newUser.save((saveUserErr, savedUser) => {
       if (saveUserErr) return next(saveUserErr);
-      logger('success')('New user created:', savedUser);
       // return token if successful
-      return res.json({ token: tokenForUser(savedUser) });
+      logger('success')(`New user created: ${savedUser._id} (${savedUser.email}).`);
+      return res.status(200).send({ token: tokenForUser(savedUser) });
     });
   });
-  return true;
+  // return true;
 };
 
 const passwordChange = (req, res) => {
@@ -72,7 +73,10 @@ const passwordChange = (req, res) => {
   }
   return req.user.comparePassword(currentPassword, (err, isMatch) => {
     // console.log('isMatch:', isMatch);
-    if (err) return res.status(400).send(err.message);
+    if (err) {
+      logger('error')('Error in comparePassword:', err.message);
+      return res.status(400).send({ error: err.message });
+    }
     // if valid, call done with the user
     if (!isMatch) {
       logger('error')(`Password change error: Wrong password (for ${req.user.email})`);
@@ -86,11 +90,13 @@ const passwordChange = (req, res) => {
       { $set: { password: newPassword } },
       { new: true })
       .then((updatedUser) => {
-        if (updatedUser.error) return res.status(400).send(updatedUser.error.message);
         // console.log('updatedUser after password change:', updatedUser);
         logger('success')(`Password for ${updatedUser.email} changed by ${req.user.email}.`);
         return res.status(200).json('Password changed successfully.');
-      }).catch(e => res.status(400).send(e));
+      }).catch((updateErr) => {
+        logger('error')('Error in findOneAndUpdate:', updateErr.message);
+        return res.status(400).send({ error: updateErr.message });
+      });
   });
 };
 
