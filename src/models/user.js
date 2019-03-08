@@ -29,8 +29,7 @@ const userSchema = new mongoose.Schema({
   displayName: { type: String, required: true, unique: true },
   fullName: { type: String, trim: true, default: '' },
   regNumber: { type: String, trim: true, default: '' }, // CSOS, BOF, etc.
-  orisId: { type: String, trim: true, default: '' },
-  // CZE specific hook for ORIS API (could auto-lookup if regNumber is XXXNNNN?)
+  orisId: { type: String, trim: true, default: '' }, // CZE specific hook for ORIS API
   location: { type: String, trim: true, default: '' },
   about: { type: String, trim: true, default: '' },
   contact: { // can flesh out with others if desired later - none are required

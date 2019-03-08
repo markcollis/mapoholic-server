@@ -167,16 +167,19 @@ const getUserById = (req, res) => {
     });
 };
 
-// helper function to get ORIS user id
+// helper function to get ORIS user id - returns a Promise
 const getOrisId = (regNumber) => {
-  return fetch(`https://oris.orientacnisporty.cz/API/?format=json&method=getUser&rgnum=${regNumber}`)
+  const ORIS_API_GETUSER = 'https://oris.orientacnisporty.cz/API/?format=json&method=getUser';
+  return fetch(`${ORIS_API_GETUSER}&rgnum=${regNumber}`)
     .then(response => response.json())
     .then((json) => {
-      console.log('Response from ORIS:', json);
+      // console.log('Response from ORIS:', json);
       return json.Data.ID;
-      // fieldsToUpdate.orisId = json.Data.ID;
     })
-    .catch(orisErr => console.log('ORIS API error:', orisErr));
+    .catch((orisErr) => {
+      logger('error')(`ORIS API error: ${orisErr.message}. Rest of update may proceed.`);
+      // don't send an HTTP error response, the rest of the update may be fine
+    });
 };
 
 // update the specified user (multiple amendment not supported)
@@ -211,47 +214,22 @@ const updateUser = (req, res) => {
     if (key === 'role' && requestorRole === 'admin') {
       fieldsToUpdate.role = req.body.role;
     }
-    // custom code for regNumber
-    // if (key === 'regNumber') {
-    //   fieldsToUpdate.regNumber = req.body.regNumber;
-    //   console.log('regNumber:', req.body.regNumber);
-    //   if (req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/)) {
-    //     // assume CSOS
-    //     fetch(`https://oris.orientacnisporty.cz/API/?format=json&method=getUser&rgnum=${req.body.regNumber}`)
-    //       .then(response => response.json())
-    //       .then((json) => {
-    //         console.log('Response from ORIS:', json);
-    //         fieldsToUpdate.orisId = json.Data.ID;
-    //       })
-    //       .catch(orisErr => console.log('ORIS API error:', orisErr));
-    //     // fieldsToUpdate.orisId = 'want to set ORIS id';
-    //   }
-    // }
   });
-  // custom code for regNumber
-  console.log('regNumber:', req.body.regNumber);
-  const checkOris = (req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/))
+  // custom check on regNumber if it appears to be a valid Czech code
+  // (Czech clubs with three letter codes only)
+  // console.log('regNumber:', req.body.regNumber);
+  const checkOris = (req.body.regNumber && req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/))
     ? getOrisId(req.body.regNumber)
     : Promise.resolve(false);
-
-  // if (req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/)) {
-  //   // assume CSOS
-  //   getOrisId(req.body.regNumber)
   return checkOris.then((orisId) => {
     if (orisId) {
-      console.log('orisId to update', orisId);
+      logger('info')(`Setting ORIS id for ${id} to ${orisId}.`);
+      // console.log('orisId to update', orisId);
       fieldsToUpdate.orisId = orisId;
     } else {
-      console.log('nothing to update');
+      // console.log('nothing to update');
     }
   }).then(() => {
-    // fetch(`https://oris.orientacnisporty.cz/API/?format=json&method=getUser&rgnum=${req.body.regNumber}`)
-    //   .then(response => response.json())
-    //   .then((json) => {
-    //     console.log('Response from ORIS:', json);
-    //     fieldsToUpdate.orisId = json.Data.ID;
-    //   })
-    // fieldsToUpdate.orisId = 'want to set ORIS id';
     const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
     // console.log('fields to be updated:', numberOfFieldsToUpdate);
     if (numberOfFieldsToUpdate === 0) {

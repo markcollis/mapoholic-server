@@ -5,7 +5,7 @@ const Authentication = require('./controllers/authentication');
 const Users = require('./controllers/users');
 const images = require('./utils/images');
 const Clubs = require('./controllers/clubs');
-const Events = require('./controllers/events');
+// const Events = require('./controllers/events');
 
 require('./services/passport'); // passport config
 
@@ -43,18 +43,20 @@ module.exports = (app) => {
   // delete profile image of the specified user
   app.delete('/users/:id/profileImage', requireAuth, Users.deleteProfileImage);
 
-  // // *** /clubs routes ***  [Club model]
-  // // create a club
-  // app.post('/clubs', requireAuth, Clubs.createClub);
-  // // retrieve a list of all clubs (ids) matching specified criteria
-  // app.get('/clubs', publicRoute, Clubs.getClubList);
-  // // retrieve full details for the specified club
-  // app.get('/clubs/:id', publicRoute, Clubs.getClubById);
-  // // update the specified club (multiple amendment not supported)
-  // app.patch('/clubs/:id', requireAuth, Clubs.updateClub);
-  // // delete the specified club (multiple deletion not supported)
-  // app.delete('/clubs/:id', requireAuth, Clubs.deleteClub);
-  //
+  // *** /clubs routes ***  [Club model]
+  // create a club
+  // autopopulate Czech clubs from abbreviation
+  app.post('/clubs', requireAuth, Clubs.createClub);
+  // retrieve a list of all clubs (ids) matching specified criteria
+  app.get('/clubs', publicRoute, Clubs.getClubList);
+  // retrieve full details for the specified club
+  app.get('/clubs/:id', publicRoute, Clubs.getClubById);
+  // update the specified club (multiple amendment not supported)
+  // try to populate ORIS if abbreviation changes and looks Czech
+  app.patch('/clubs/:id', requireAuth, Clubs.updateClub);
+  // delete the specified club (multiple deletion not supported)
+  app.delete('/clubs/:id', requireAuth, Clubs.deleteClub);
+
   // // *** /events routes ***  [OEvent and LinkedEvent models]
   // // ids need to be more explicit as several levels
   // // create an event
@@ -62,7 +64,8 @@ module.exports = (app) => {
   // // create a map within the specified event
   // app.post('/events/:eventid/maps', requireAuth, Events.createMap);
   // // upload a scanned map to the specified map document (maptitle for differentiation)
-  // app.post('/events/:eventid/maps/:mapid/:maptitle', requireAuth, Events.validateMapUploadPermission,
+  // app.post('/events/:eventid/maps/:mapid/:maptitle', requireAuth,
+  //   Events.validateMapUploadPermission,
   //   images.uploadMap.single('upload'), Events.postMap, images.errorHandler);
   // // create a new event linkage between the specified events
   // app.post('/events/links', requireAuth, Events.createLink);
