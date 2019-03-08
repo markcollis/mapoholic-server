@@ -1,5 +1,6 @@
 const { ObjectID } = require('mongodb');
 const sharp = require('sharp');
+const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
@@ -39,7 +40,7 @@ const getUserList = (req, res) => {
   logReq(req);
   const userSearchCriteria = { active: true };
   // support basic filtering using query strings (consider e.g. mongoose-string-query later?)
-  const validFilters = ['displayName', 'fullName', 'location', 'about', 'contact.email', 'memberOf'];
+  const validFilters = ['displayName', 'fullName', 'regNumber', 'location', 'about', 'contact.email', 'memberOf'];
   Object.keys(req.query).forEach((key) => {
     // console.log('filtering on', key, req.query[key]);
     if (validFilters.includes(key)) {
@@ -166,6 +167,18 @@ const getUserById = (req, res) => {
     });
 };
 
+// helper function to get ORIS user id
+const getOrisId = (regNumber) => {
+  return fetch(`https://oris.orientacnisporty.cz/API/?format=json&method=getUser&rgnum=${regNumber}`)
+    .then(response => response.json())
+    .then((json) => {
+      console.log('Response from ORIS:', json);
+      return json.Data.ID;
+      // fieldsToUpdate.orisId = json.Data.ID;
+    })
+    .catch(orisErr => console.log('ORIS API error:', orisErr));
+};
+
 // update the specified user (multiple amendment not supported)
 const updateUser = (req, res) => {
   logReq(req);
@@ -182,6 +195,7 @@ const updateUser = (req, res) => {
     'visibility',
     'displayName',
     'fullName',
+    'regNumber',
     'location',
     'about',
     'contact',
@@ -197,37 +211,78 @@ const updateUser = (req, res) => {
     if (key === 'role' && requestorRole === 'admin') {
       fieldsToUpdate.role = req.body.role;
     }
+    // custom code for regNumber
+    // if (key === 'regNumber') {
+    //   fieldsToUpdate.regNumber = req.body.regNumber;
+    //   console.log('regNumber:', req.body.regNumber);
+    //   if (req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/)) {
+    //     // assume CSOS
+    //     fetch(`https://oris.orientacnisporty.cz/API/?format=json&method=getUser&rgnum=${req.body.regNumber}`)
+    //       .then(response => response.json())
+    //       .then((json) => {
+    //         console.log('Response from ORIS:', json);
+    //         fieldsToUpdate.orisId = json.Data.ID;
+    //       })
+    //       .catch(orisErr => console.log('ORIS API error:', orisErr));
+    //     // fieldsToUpdate.orisId = 'want to set ORIS id';
+    //   }
+    // }
   });
-  const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
-  // console.log('fields to be updated:', numberOfFieldsToUpdate);
-  if (numberOfFieldsToUpdate === 0) {
-    logger('error')('Update user error: no valid fields to update.');
-    return res.status(400).send({ error: 'No valid fields to update.' });
-  }
-  // console.log('fieldsToUpdate:', fieldsToUpdate);
-  const allowedToUpdate = ((requestorRole === 'admin')
-    || (requestorRole === 'standard' && requestorId === id));
-  // console.log('allowedToUpdate', allowedToUpdate);
-  if (allowedToUpdate) {
-    return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
-      .select('-password')
-      .then((updatedUser) => {
-        // console.log('updatedUser', updatedUser);
-        logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-        return res.status(200).send(updatedUser);
-      })
-      .catch((err) => {
-        if (err.message.slice(0, 6) === 'E11000') {
-          const duplicate = err.message.split('"')[1];
-          logger('error')(`Error updating user: duplicate value ${duplicate}.`);
-          return res.status(400).send({ error: `${duplicate} is already in use.` });
-        }
-        logger('error')('Error updating user:', err.message);
-        return res.status(400).send({ error: err.message });
-      });
-  }
-  logger('error')(`Error: ${req.user.email} not allowed to update ${id}.`);
-  return res.status(401).send({ error: 'Not allowed to update this user.' });
+  // custom code for regNumber
+  console.log('regNumber:', req.body.regNumber);
+  const checkOris = (req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/))
+    ? getOrisId(req.body.regNumber)
+    : Promise.resolve(false);
+
+  // if (req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/)) {
+  //   // assume CSOS
+  //   getOrisId(req.body.regNumber)
+  return checkOris.then((orisId) => {
+    if (orisId) {
+      console.log('orisId to update', orisId);
+      fieldsToUpdate.orisId = orisId;
+    } else {
+      console.log('nothing to update');
+    }
+  }).then(() => {
+    // fetch(`https://oris.orientacnisporty.cz/API/?format=json&method=getUser&rgnum=${req.body.regNumber}`)
+    //   .then(response => response.json())
+    //   .then((json) => {
+    //     console.log('Response from ORIS:', json);
+    //     fieldsToUpdate.orisId = json.Data.ID;
+    //   })
+    // fieldsToUpdate.orisId = 'want to set ORIS id';
+    const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
+    // console.log('fields to be updated:', numberOfFieldsToUpdate);
+    if (numberOfFieldsToUpdate === 0) {
+      logger('error')('Update user error: no valid fields to update.');
+      return res.status(400).send({ error: 'No valid fields to update.' });
+    }
+    // console.log('fieldsToUpdate:', fieldsToUpdate);
+    const allowedToUpdate = ((requestorRole === 'admin')
+      || (requestorRole === 'standard' && requestorId === id));
+    // console.log('allowedToUpdate', allowedToUpdate);
+    if (allowedToUpdate) {
+      return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+        .select('-password')
+        .then((updatedUser) => {
+          // console.log('updatedUser', updatedUser);
+          logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+          return res.status(200).send(updatedUser);
+        })
+        .catch((err) => {
+          if (err.message.slice(0, 6) === 'E11000') {
+            const duplicate = err.message.split('"')[1];
+            logger('error')(`Error updating user: duplicate value ${duplicate}.`);
+            return res.status(400).send({ error: `${duplicate} is already in use.` });
+          }
+          logger('error')('Error updating user:', err.message);
+          return res.status(400).send({ error: err.message });
+        });
+    }
+    logger('error')(`Error: ${req.user.email} not allowed to update ${id}.`);
+    return res.status(401).send({ error: 'Not allowed to update this user.' });
+  });
 };
 
 // delete the specified user (multiple deletion not supported)
@@ -314,9 +369,9 @@ const postProfileImage = (req, res) => {
         // console.log('updatedUser', updatedUser);
         logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
         return res.status(200).send({ profileImageUrl });
-      }).catch((err) => {
-        logger('error')('Error recording new profile image URL:', err.message);
-        return res.status(400).send({ error: err.message });
+      }).catch((saveUrlErr) => {
+        logger('error')('Error recording new profile image URL:', saveUrlErr.message);
+        return res.status(400).send({ error: saveUrlErr.message });
       });
   });
 };
