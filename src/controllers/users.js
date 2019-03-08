@@ -1,4 +1,5 @@
 const { ObjectID } = require('mongodb');
+const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
@@ -293,40 +294,31 @@ const postProfileImage = (req, res) => {
   if (!req.file) {
     logger('error')('Error: postProfileImage request without image attached.');
     return res.status(400).send({ error: 'No profile image file attached.' });
-    // next(new Error('No file uploaded.'));
   }
-  const profileImageUrl = url.format({
-    protocol: req.protocol,
-    host: req.get('host'),
-    pathname: req.file.path,
-  });
-  // Demo of rename after upload. Not needed now that approach is to validate before upload
-  // fs.readdir('images/avatars', (err, files) => {
-  //   if (err) throw err;
-  //   console.log('listing files:');
-  //   files.forEach(file => console.log(file));
-  // });
-  // fs.rename(req.file.path, 'images/avatars/new.jpg', (renameErr) => {
+  const newFileLocation = path.join('images', 'avatars', req.file.path.split('/').pop());
+  // alt - simple move from upload to avatars
+  // return fs.rename(req.file.path, newFileLocation, (renameErr) => {
   //   if (renameErr) throw renameErr;
-  //   fs.readdir('images/avatars', (err, files) => {
-  //     if (err) throw err;
-  //     console.log('listing files again:');
-  //     files.forEach(file => console.log(file));
-  //   });
-  // });
-  return User.findByIdAndUpdate(req.params.id,
-    { $set: { profileImage: profileImageUrl } },
-    { new: true })
-    .select('-password')
-    .then((updatedUser) => {
-      // console.log('updatedUser', updatedUser);
-      logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
-      return res.status(200).send({ profileImageUrl });
-    })
-    .catch((err) => {
-      logger('error')('Error recording new profile image URL:', err.message);
-      return res.status(400).send({ error: err.message });
+  return sharp(req.file.path).resize(200, 200).toFile(newFileLocation, (err) => {
+    if (err) throw err;
+    const profileImageUrl = url.format({
+      protocol: req.protocol,
+      host: req.get('host'),
+      pathname: newFileLocation,
     });
+    return User.findByIdAndUpdate(req.params.id,
+      { $set: { profileImage: profileImageUrl } },
+      { new: true })
+      .select('-password')
+      .then((updatedUser) => {
+        // console.log('updatedUser', updatedUser);
+        logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
+        return res.status(200).send({ profileImageUrl });
+      }).catch((err) => {
+        logger('error')('Error recording new profile image URL:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
+  });
 };
 
 const deleteProfileImage = (req, res) => {
@@ -348,10 +340,14 @@ const deleteProfileImage = (req, res) => {
     .select('profileImage email')
     .then((deletedUser) => {
       // then delete the file
+      if (!deletedUser.profileImage) {
+        logger('error')(`Error: ${deletedUser.email} does not have a profile image.`);
+        return res.status(404).send({ error: `Error: ${deletedUser.email} does not have a profile image.` });
+      }
       // console.log('deletedUser', deletedUser);
       const fileToDelete = path.join('images', 'avatars', deletedUser.profileImage.split('/').pop());
       // console.log('fileToDelete', fileToDelete);
-      fs.unlink(fileToDelete, (err) => {
+      return fs.unlink(fileToDelete, (err) => {
         if (err) throw err;
         // fs.readdir('images/avatars', (err2, files) => {
         //   if (err2) throw err2;

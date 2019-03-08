@@ -21,7 +21,7 @@ const publicRoute = (req, res, next) => { // anonymous access permitted, take ca
 // multer setup for uploading profile images and maps
 const profileImageStorage = multer.diskStorage({
   destination(req, file, cb) {
-    cb(null, 'images/avatars');
+    cb(null, 'images/upload');
   },
   filename(req, file, cb) {
     const fileTypes = {

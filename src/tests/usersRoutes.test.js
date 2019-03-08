@@ -720,3 +720,13 @@ describe('DELETE /users/:id', () => {
       .end(done);
   });
 });
+
+// upload profile image for specified user
+describe('POST /users/:id/profileImage', () => {
+// to do
+});
+
+// delete profile image of the specified user
+describe('DELETE /users/:id/profileImage', () => {
+// to do
+});
