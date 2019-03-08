@@ -1,4 +1,7 @@
 const { ObjectID } = require('mongodb');
+const fs = require('fs');
+const path = require('path');
+const url = require('url');
 const User = require('../models/user');
 require('../models/club');
 const logger = require('../utils/logger');
@@ -91,7 +94,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
   // return User.findById(userId)
   return User.findOne({ _id: userId, active: true })
     .populate('memberOf')
-    .select('-password')
+    .select('-password -active')
     .then((profile) => {
       if (!profile) return { searchError: true };
       const { visibility, _id, memberOf } = profile;
@@ -194,6 +197,12 @@ const updateUser = (req, res) => {
       fieldsToUpdate.role = req.body.role;
     }
   });
+  const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
+  // console.log('fields to be updated:', numberOfFieldsToUpdate);
+  if (numberOfFieldsToUpdate === 0) {
+    logger('error')('Update user error: no valid fields to update.');
+    return res.status(400).send({ error: 'No valid fields to update.' });
+  }
   // console.log('fieldsToUpdate:', fieldsToUpdate);
   const allowedToUpdate = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === id));
@@ -203,7 +212,7 @@ const updateUser = (req, res) => {
       .select('-password')
       .then((updatedUser) => {
         // console.log('updatedUser', updatedUser);
-        logger('success')(`${updatedUser.email} updated by ${req.user.email}.`);
+        logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
         return res.status(200).send(updatedUser);
       })
       .catch((err) => {
@@ -234,24 +243,129 @@ const deleteUser = (req, res) => {
     || (requestorRole === 'standard' && requestorId === id));
   // console.log('allowedToDelete', allowedToDelete);
   if (allowedToDelete) {
-    return User.findByIdAndUpdate(id, { $set: { active: false } }, { new: true })
-      .select('-password')
-      .then((deletedUser) => {
-        if (!deletedUser) {
-          logger('error')('Error deleting user: no matching user found.');
-          return res.status(404).send({ error: 'User could not be found.' });
-        }
-        // console.log('deletedUser', deletedUser);
-        logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
-        return res.status(200).send(deletedUser);
-      })
-      .catch((err) => {
-        logger('error')('Error deleting user:', err.message);
-        return res.status(400).send({ error: err.message });
-      });
+    return User.findById(id).then((userToDelete) => {
+      if (!userToDelete) {
+        logger('error')('Error deleting user: no matching user found.');
+        return res.status(404).send({ error: 'User could not be found.' });
+      }
+      const now = new Date();
+      const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
+        .concat((`0${(now.getMonth() + 1)}`).slice(-2))
+        .concat(now.getFullYear().toString())
+        .concat('@')
+        .concat((`0${now.getHours()}`).slice(-2))
+        .concat((`0${now.getMinutes()}`).slice(-2));
+      const newEmail = `${userToDelete.email} ${deletedAt}`;
+      const newDisplayName = `${userToDelete.displayName} ${deletedAt}`;
+      return User.findByIdAndUpdate(id,
+        { $set: { active: false, email: newEmail, displayName: newDisplayName } },
+        { new: true })
+        .select('-password')
+        .then((deletedUser) => {
+          // console.log('deletedUser', deletedUser);
+          logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
+          return res.status(200).send(deletedUser);
+        })
+        .catch((err) => {
+          logger('error')('Error deleting user:', err.message);
+          return res.status(400).send({ error: err.message });
+        });
+    });
   }
   logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
   return res.status(401).send({ error: 'Not allowed to delete this user.' });
+};
+
+const validateProfileImagePermission = (req, res, next) => {
+  const allowedToPostProfileImage = ((req.user.role === 'admin')
+  || (req.user.role === 'standard' && req.user._id.toString() === req.params.id.toString()));
+  // console.log('allowed?', allowedToPostProfileImage);
+  if (!allowedToPostProfileImage) {
+    logger('error')(`Error: ${req.user.email} not allowed to upload profile image for ${req.params.id}.`);
+    return res.status(401).send({ error: 'Not allowed to upload profile image for this user.' });
+    // next(new Error('No file uploaded.'));
+  }
+  return next();
+};
+
+const postProfileImage = (req, res) => {
+  logReq(req);
+  if (!req.file) {
+    logger('error')('Error: postProfileImage request without image attached.');
+    return res.status(400).send({ error: 'No profile image file attached.' });
+    // next(new Error('No file uploaded.'));
+  }
+  const profileImageUrl = url.format({
+    protocol: req.protocol,
+    host: req.get('host'),
+    pathname: req.file.path,
+  });
+  // Demo of rename after upload. Not needed now that approach is to validate before upload
+  // fs.readdir('images/avatars', (err, files) => {
+  //   if (err) throw err;
+  //   console.log('listing files:');
+  //   files.forEach(file => console.log(file));
+  // });
+  // fs.rename(req.file.path, 'images/avatars/new.jpg', (renameErr) => {
+  //   if (renameErr) throw renameErr;
+  //   fs.readdir('images/avatars', (err, files) => {
+  //     if (err) throw err;
+  //     console.log('listing files again:');
+  //     files.forEach(file => console.log(file));
+  //   });
+  // });
+  return User.findByIdAndUpdate(req.params.id,
+    { $set: { profileImage: profileImageUrl } },
+    { new: true })
+    .select('-password')
+    .then((updatedUser) => {
+      // console.log('updatedUser', updatedUser);
+      logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
+      return res.status(200).send({ profileImageUrl });
+    })
+    .catch((err) => {
+      logger('error')('Error recording new profile image URL:', err.message);
+      return res.status(400).send({ error: err.message });
+    });
+};
+
+const deleteProfileImage = (req, res) => {
+  logReq(req);
+  const allowedToDeleteProfileImage = ((req.user.role === 'admin')
+  || (req.user.role === 'standard' && req.user._id.toString() === req.params.id.toString()));
+  // console.log('allowed?', allowedToDeleteProfileImage);
+  if (!allowedToDeleteProfileImage) {
+    logger('error')(`Error: ${req.user.email} not allowed to delete profile image for ${req.params.id}.`);
+    return res.status(401).send({ error: 'Not allowed to delete profile image for this user.' });
+  }
+  // fs.readdir('images/avatars', (err, files) => {
+  //   if (err) throw err;
+  //   console.log('listing files before delete:');
+  //   files.forEach(file => console.log(file));
+  // });
+  // delete the reference to it in the user document
+  return User.findByIdAndUpdate(req.params.id, { $set: { profileImage: '' } }, { new: false })
+    .select('profileImage email')
+    .then((deletedUser) => {
+      // then delete the file
+      // console.log('deletedUser', deletedUser);
+      const fileToDelete = path.join('images', 'avatars', deletedUser.profileImage.split('/').pop());
+      // console.log('fileToDelete', fileToDelete);
+      fs.unlink(fileToDelete, (err) => {
+        if (err) throw err;
+        // fs.readdir('images/avatars', (err2, files) => {
+        //   if (err2) throw err2;
+        //   console.log('listing files after delete:');
+        //   files.forEach(file => console.log(file));
+        // });
+        logger('success')(`Profile image deleted from ${deletedUser.email} by ${req.user.email}.`);
+        return res.status(200).send({ status: `Profile image deleted from ${deletedUser.email} by ${req.user.email}.` });
+      });
+    })
+    .catch((err) => {
+      logger('error')('Error deleting profile image:', err.message);
+      return res.status(400).send({ error: err.message });
+    });
 };
 
 module.exports = {
@@ -260,4 +374,7 @@ module.exports = {
   getUserById,
   updateUser,
   deleteUser,
+  validateProfileImagePermission,
+  postProfileImage,
+  deleteProfileImage,
 };

@@ -1,8 +1,10 @@
 // Main starting point of the application
 require('dotenv').config(); // import environment variables from .env file
 const express = require('express'); // node.js web application framework
+// const multer = require('multer'); // support for image uploads
 const https = require('https'); // support for https connections
 const fs = require('fs'); // filesystem access for https certificate and key
+const path = require('path'); // manage filesystem paths
 const bodyParser = require('body-parser'); // middleware: format responses
 const morgan = require('morgan'); // middleware: logging framework
 const cors = require('cors'); // middleware: support CORS requests
@@ -33,7 +35,10 @@ require('./utils/db');
 app.use(morgan('dev')); // middleware: logging framework for requests
 // output is: method url status response time - response-length
 app.use(cors()); // middleware: support CORS requests from anywhere (OK for dev)
-app.use(bodyParser.json({ type: '*/*' })); // middleware: treat ALL incoming requests as JSON
+// app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use('/images', express.static(path.join(__dirname, 'images')));
+// app.use(express.static('images'));
 router(app);
 
 // Server setup (get express to talk to the outside world...)
