@@ -35,7 +35,7 @@ const findAndReturnUserList = (userSearchCriteria) => {
     });
 };
 
-// retrieve a list of all users (ids) matching specified criteria
+// retrieve a list of all users (incl ids) matching specified criteria
 const getUserList = (req, res) => {
   logReq(req);
   const userSearchCriteria = { active: true };
@@ -96,7 +96,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
   // return User.findById(userId)
   return User.findOne({ _id: userId, active: true })
     .populate('memberOf')
-    .select('-password -active')
+    .select('-password -active -__v')
     .then((profile) => {
       if (!profile) return { searchError: true };
       const { visibility, _id, memberOf } = profile;
@@ -216,9 +216,8 @@ const updateUser = (req, res) => {
     }
   });
   // custom check on regNumber if it appears to be a valid Czech code
-  // (Czech clubs with three letter codes only)
   // console.log('regNumber:', req.body.regNumber);
-  const checkOris = (req.body.regNumber && req.body.regNumber.match(/[A-Z]{3}[0-9]{4}/))
+  const checkOris = (req.body.regNumber && req.body.regNumber.match(/([A-Z]|[0-9]){2}[A-Z][0-9]{4}/))
     ? getOrisId(req.body.regNumber)
     : Promise.resolve(false);
   return checkOris.then((orisId) => {

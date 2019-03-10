@@ -88,15 +88,63 @@ const createClub = (req, res) => {
   });
 };
 
-// retrieve a list of all clubs (ids) matching specified criteria
+// retrieve details for all clubs matching specified criteria
 const getClubList = (req, res) => {
   logReq(req);
-  res.send({ message: 'GET /clubs is still TBD' });
+  const clubSearchCriteria = { active: true };
+  // support basic filtering using query strings
+  const validFilters = ['owner', 'shortName', 'fullName', 'orisId', 'country', 'website'];
+  Object.keys(req.query).forEach((key) => {
+    // console.log('filtering on', key, req.query[key]);
+    if (validFilters.includes(key)) {
+      if (key === 'owner') {
+        // needs custom treatment to avoid ObjectID cast error/return empty array if no such owner
+        if (ObjectID.isValid(req.query.owner)) {
+          clubSearchCriteria.owner = req.query.owner;
+        } else {
+          clubSearchCriteria.owner = null;
+        }
+      } else {
+        clubSearchCriteria[key] = { $regex: new RegExp(req.query[key]) };
+      }
+    }
+  });
+  // console.log('clubSearchCriteria:', JSON.stringify(clubSearchCriteria));
+  Club.find(clubSearchCriteria)
+    .populate('owner', '_id displayName')
+    .select('-active -__v')
+    .then((clubs) => {
+      logger('success')(`Returned list of ${clubs.length} club(s).`);
+      return res.status(200).send(clubs);
+    })
+    .catch((err) => {
+      logger('error')('Error getting list of clubs:', err.message);
+      return res.status(400).send(err.message);
+    });
 };
 
 const getClubById = (req, res) => {
   logReq(req);
-  res.send({ message: 'GET /clubs/:id is still TBD' });
+  const { id } = req.params;
+  if (!ObjectID.isValid(id)) {
+    logger('error')('Error getting club details: invalid club id.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  return Club.findOne({ _id: id, active: true })
+    .populate('owner', '_id displayName')
+    .select('-active -__v')
+    .then((club) => {
+      if (!club) {
+        logger('error')('Error getting club details: no club found.');
+        return res.status(404).send({ error: 'No club found.' });
+      }
+      logger('success')(`Returned club details for ${club.shortName}.`);
+      return res.status(200).send(club);
+    })
+    .catch((err) => {
+      logger('error')('Error getting club details:', err.message);
+      return res.status(400).send({ error: err.message });
+    });
 };
 
 const updateClub = (req, res) => {
@@ -110,7 +158,7 @@ const updateClub = (req, res) => {
   }
   if (!ObjectID.isValid(id)) {
     logger('error')('Error updating club: invalid club id.');
-    return res.status(404).send({ error: 'Invalid ID.' });
+    return res.status(400).send({ error: 'Invalid ID.' });
   }
   // now need to check database to identify owner
   return Club.findById(id).then((clubToUpdate) => {
@@ -188,7 +236,45 @@ const updateClub = (req, res) => {
 
 const deleteClub = (req, res) => {
   logReq(req);
-  res.send({ message: 'DELETE /clubs/:id is still TBD' });
+  const { id } = req.params;
+  const requestorRole = req.user.role;
+  const requestorId = req.user._id.toString();
+  if (!ObjectID.isValid(id)) {
+    logger('error')('Error deleting club: invalid club id.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  return Club.findById(id).then((clubToDelete) => {
+    if (!clubToDelete) {
+      logger('error')('Error deleting club: no matching user found.');
+      return res.status(404).send({ error: 'Club could not be found.' });
+    }
+    const allowedToDelete = ((requestorRole === 'admin')
+    || (requestorRole === 'standard' && requestorId === clubToDelete.owner.toString()));
+    console.log('allowedToDelete', allowedToDelete, clubToDelete.shortName);
+    if (allowedToDelete) {
+      const now = new Date();
+      const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
+        .concat((`0${(now.getMonth() + 1)}`).slice(-2))
+        .concat(now.getFullYear().toString())
+        .concat('@')
+        .concat((`0${now.getHours()}`).slice(-2))
+        .concat((`0${now.getMinutes()}`).slice(-2));
+      const newShortName = `${clubToDelete.shortName} ${deletedAt}`;
+      return Club.findByIdAndUpdate(id,
+        { $set: { active: false, shortName: newShortName } },
+        { new: true })
+        .then((deletedClub) => {
+          logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
+          return res.status(200).send(deletedClub);
+        })
+        .catch((err) => {
+          logger('error')('Error deleting club:', err.message);
+          return res.status(400).send({ error: err.message });
+        });
+    }
+    logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
+    return res.status(401).send({ error: 'Not allowed to delete this club.' });
+  });
 };
 
 module.exports = {
