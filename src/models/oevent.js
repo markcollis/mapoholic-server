@@ -7,7 +7,7 @@ const validator = require('validator');
 const oeventSchema = new mongoose.Schema({
   owner: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
   // only owner (or admin) can delete, but all users linked to maps can edit event level fields
-  date: { type: Date, index: true, required: true }, // ORIS Data.Date
+  date: { type: String, index: true, required: true }, // ORIS Data.Date YYYY-MM-DD
   name: { type: String, trim: true, required: true }, // ORIS Data.Name
   orisId: { // CZE specific but essential to support as it will enable a lot of auto-population
     type: String, // ORIS Data.ID
@@ -23,15 +23,13 @@ const oeventSchema = new mongoose.Schema({
   // ORIS Data.ParentID, Data.Stages, Data.Stage1-7 have relevant information
   // also Data.Level.ShortName = ET (multi-day wrapper)
   mapName: { type: String, trim: true }, // ORIS Data.Map
-  location: {
-    place: { type: String, trim: true }, // ORIS Data.Place (nearby town, etc.)
-    regions: [{ type: String, trim: true }], // ORIS Data.Regions
-    country: { type: String, trim: true, validate: value => validator.isISO31661Alpha3(value) },
-    // not in ORIS but assume CZE if auto-populating from ORIS API
-    lat: { type: Number, min: -90, max: 90 }, // ORIS Data.GPSLat
-    long: { type: Number, min: -180, max: 180 }, // ORIS Data.GPSLon
-    // if not from ORIS, auto-populate from first geotagged map upload? or perhaps not needed?
-  },
+  locPlace: { type: String, trim: true }, // ORIS Data.Place (nearby town, etc.)
+  locRegions: [{ type: String, trim: true }], // ORIS Data.Regions
+  locCountry: { type: String, trim: true, validate: value => validator.isISO31661Alpha3(value) },
+  // not in ORIS but assume CZE if auto-populating from ORIS API
+  locLat: { type: Number, min: -90, max: 90 }, // ORIS Data.GPSLat
+  locLong: { type: Number, min: -180, max: 180 }, // ORIS Data.GPSLon
+  // if not from ORIS, auto-populate from first geotagged map upload? or perhaps not needed?
   types: [{ // discipline labels, fixed set, need to support everything from ORIS
     // Front end will handle translation, store as English strings in db not ORIS abbreviations
     // ORIS Data.Discipline is one field, not an array, but can be combined with
@@ -61,13 +59,14 @@ const oeventSchema = new mongoose.Schema({
   // auto-populate from ORIS Data.Level.NameCZ but exclude some (E, ET, S, OST, ?)
   website: { type: String, trim: true, validate: value => validator.isURL(value) },
   // ORIS Data.Links.Link_nnnn.Url where Link_nnnn.SourceType.ID = 13, NameCZ = Web zavodu
+  // or perhaps a better default is the ORIS page for the event itself?
   results: { type: String, trim: true, validate: value => validator.isURL(value) },
   // not in ORIS data, format is https://oris.orientacnisporty.cz/Vysledky?id=eventid
   // but only where the full details are stored in ORIS. For other races there is an
   // uploaded PDF, found in Data.Documents.Document_nnnn.Url with SourceType.ID = 4
   // whereas others have never had results uploaded at all...
   runners: [{ // constrain so that only the logged in user can add (not admin for others)
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
     visibility: { // top level event is visible to all logged in users, unless there
       // is a public map beneath in which case it is visible to the public too
       type: String,
@@ -80,33 +79,30 @@ const oeventSchema = new mongoose.Schema({
       ],
       default: 'all',
     },
-    course: { // details from ORIS getEvent Data.Classes.Class_nnnn.
-      title: { type: String, trim: true }, // ORIS Name
-      length: { type: String, trim: true }, // ORIS Distance (km)
-      climb: { type: String, trim: true }, // ORIS Climbing (m)
-      controls: { type: String, trim: true }, // ORIS Controls
-      results: [{ // parse and store full results from ORIS - allow manual entry too?
-        // this would be nice to display under the map, but would anyone bother
-        // entering manually? Possibly yes for training sessions, esp. with links to other users
-        place: { type: String, trim: true }, // ORIS Place
-        name: { type: String, trim: true }, // ORIS Name
-        club: { type: String, trim: true }, // ORIS ClubNameResults
-        regNumber: { type: String, trim: true }, // ORIS RegNo
-        time: { type: String, trim: true }, // ORIS Time
-        loss: { type: String, trim: true }, // ORIS Loss
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'user' }, // for x-ref
-        // compare against the set of userIds with associated maps whenever edited?
-      }],
-    },
-    performance: { // all optional, enables detailed info to be captured if the user wants to
-      // can be obtained if ORIS hosts results via getEventResults&eventid&classid
-      // fields are defined to be compatible with ORIS, hence strings rather than numbers
-      time: { type: String, trim: true }, // hhh:mm Data.Result_nnnnn.Time [UserID=orisId]
-      place: { type: String, trim: true }, // Data.Result_nnnn.Place
-      timeBehind: { type: String, trim: true }, // Data.Result_nnnn.Loss
-      fieldSize: { type: String, trim: true }, // can work out from ORIS result set length
-      distanceRun: { type: String, trim: true }, // km - from GPS perhaps?
-    },
+    // course details from ORIS getEvent Data.Classes.Class_nnnn.
+    courseTitle: { type: String, trim: true }, // ORIS Name
+    courseLength: { type: String, trim: true }, // ORIS Distance (km)
+    courseClimb: { type: String, trim: true }, // ORIS Climbing (m)
+    courseControls: { type: String, trim: true }, // ORIS Controls
+    fullResults: [{ // parse and store full results from ORIS - allow manual entry too?
+      // this would be nice to display under the map, but would anyone bother
+      // entering manually? Possibly yes for training sessions, esp. with links to other users
+      place: { type: String, trim: true }, // ORIS Place
+      name: { type: String, trim: true }, // ORIS Name
+      club: { type: String, trim: true }, // ORIS ClubNameResults
+      regNumber: { type: String, trim: true }, // ORIS RegNo
+      time: { type: String, trim: true }, // ORIS Time
+      loss: { type: String, trim: true }, // ORIS Loss
+      // compare against the set of userIds with associated maps whenever edited?
+    }],
+    // performance fields all optional, enables detailed info to be captured if the user wants to
+    // can be obtained if ORIS hosts results via getEventResults&eventid&classid
+    // fields are defined to be compatible with ORIS, hence strings rather than numbers
+    time: { type: String, trim: true }, // hhh:mm Data.Result_nnnnn.Time [UserID=orisId]
+    place: { type: String, trim: true }, // Data.Result_nnnn.Place
+    timeBehind: { type: String, trim: true }, // Data.Result_nnnn.Loss
+    fieldSize: { type: String, trim: true }, // can work out from ORIS result set length
+    distanceRun: { type: String, trim: true }, // actual km - from GPS perhaps?
     tags: [{ type: String, trim: true }], // user-defined tags associated with map rather than event
     maps: [{ // one or more set, referred to by index
       title: { type: String, trim: true, default: 'map' }, // label e.g. 'part 1'
@@ -115,8 +111,8 @@ const oeventSchema = new mongoose.Schema({
       // thumbnail and extract are auto-generated each time another map is uploaded
       thumbnail: { type: String, trim: true }, // URL for thumbnail of whole map (200 x 200)
       extract: { type: String, trim: true }, // URL for map extract (600 x 200?)
+      isGeocoded: { type: Boolean, default: false }, // i.e. is there anything to find in 'geo'
       geo: { // information to be extracted from QR jpg on upload; only centre/corners set manually
-        isGeocoded: { type: Boolean, default: false },
         mapCentre: {
           lat: { type: Number, min: -90, max: 90 },
           long: { type: Number, min: -180, max: 180 },
@@ -171,7 +167,6 @@ const oeventSchema = new mongoose.Schema({
       postedAt: { type: Date, default: Date.now },
       updatedAt: { type: Date, default: Date.now },
     }],
-    active: { type: Boolean, default: true }, // set to false on 'deletion', recovery in db only
   }],
   active: { type: Boolean, default: true }, // set to false on 'deletion', recovery in db only
 }, { timestamps: true });

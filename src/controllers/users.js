@@ -8,6 +8,7 @@ const User = require('../models/user');
 require('../models/club');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
+const { validateClubIds } = require('./validateIds');
 
 // retrieve and format matching user list data
 const findAndReturnUserList = (userSearchCriteria) => {
@@ -40,7 +41,7 @@ const getUserList = (req, res) => {
   logReq(req);
   const userSearchCriteria = { active: true };
   // support basic filtering using query strings (consider e.g. mongoose-string-query later?)
-  const validFilters = ['displayName', 'fullName', 'regNumber', 'location', 'about', 'contact.email', 'memberOf'];
+  const validFilters = ['displayName', 'fullName', 'regNumber', 'location', 'about', 'memberOf', 'role'];
   Object.keys(req.query).forEach((key) => {
     // console.log('filtering on', key, req.query[key]);
     if (validFilters.includes(key)) {
@@ -106,10 +107,10 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
       // is the requestor allowed to see this user profile or not?
       let allowedToSee = false;
       if (requestorRole === 'admin') allowedToSee = true;
-      if (requestorRole === 'anonymous' && visibility === 'public') allowedToSee = true;
+      if (visibility === 'public') allowedToSee = true;
       if (requestorRole === 'standard' || requestorRole === 'guest') {
         if (requestorId === profileUserId) allowedToSee = true;
-        if (visibility === 'public' || visibility === 'all') allowedToSee = true;
+        if (visibility === 'all') allowedToSee = true;
       }
       if (requestorRole !== 'anonymous' && visibility === 'club') {
         // console.log('profileClubs', profileClubs);
@@ -158,7 +159,7 @@ const getUserById = (req, res) => {
       logger('error')('Error fetching user details: no matching user found');
       return res.status(404).send({ error: 'User details could not be found.' });
     }
-    logger('success')(`Returned user details for ${userDetails.email} to ${req.user.email}.`);
+    logger('success')(`Returned user details for ${userDetails.email} to ${req.user.email || 'an anonymous user'}.`);
     return res.status(200).send(userDetails);
   })
     .catch((err) => {
@@ -203,7 +204,6 @@ const updateUser = (req, res) => {
     'about',
     'contact',
     'memberOf',
-    'profileImage', // path to uploaded image will need to be set in middleware
   ];
   Object.keys(req.body).forEach((key) => {
     // console.log('filtering on', key, req.query[key]);
@@ -215,50 +215,61 @@ const updateUser = (req, res) => {
       fieldsToUpdate.role = req.body.role;
     }
   });
-  // custom check on regNumber if it appears to be a valid Czech code
-  // console.log('regNumber:', req.body.regNumber);
-  const checkOris = (req.body.regNumber && req.body.regNumber.match(/([A-Z]|[0-9]){2}[A-Z][0-9]{4}/))
-    ? getOrisId(req.body.regNumber)
+
+  // memberOf needs special treatment: array of ObjectIDs
+  // note that this will REPLACE the existing array not add to it/edit it
+  const checkClubIds = (req.body.memberOf && Array.isArray(req.body.memberOf))
+    ? validateClubIds(req.body.memberOf)
     : Promise.resolve(false);
-  return checkOris.then((orisId) => {
-    if (orisId) {
-      logger('info')(`Setting ORIS id for ${id} to ${orisId}.`);
-      // console.log('orisId to update', orisId);
-      fieldsToUpdate.orisId = orisId;
-    } else {
-      // console.log('nothing to update');
+  return checkClubIds.then((validIds) => {
+    if (validIds) {
+      fieldsToUpdate.memberOf = validIds;
     }
   }).then(() => {
-    const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
-    // console.log('fields to be updated:', numberOfFieldsToUpdate);
-    if (numberOfFieldsToUpdate === 0) {
-      logger('error')('Update user error: no valid fields to update.');
-      return res.status(400).send({ error: 'No valid fields to update.' });
-    }
-    // console.log('fieldsToUpdate:', fieldsToUpdate);
-    const allowedToUpdate = ((requestorRole === 'admin')
-      || (requestorRole === 'standard' && requestorId === id));
-    // console.log('allowedToUpdate', allowedToUpdate);
-    if (allowedToUpdate) {
-      return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
-        .select('-password')
-        .then((updatedUser) => {
-          // console.log('updatedUser', updatedUser);
-          logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-          return res.status(200).send(updatedUser);
-        })
-        .catch((err) => {
-          if (err.message.slice(0, 6) === 'E11000') {
-            const duplicate = err.message.split('"')[1];
-            logger('error')(`Error updating user: duplicate value ${duplicate}.`);
-            return res.status(400).send({ error: `${duplicate} is already in use.` });
-          }
-          logger('error')('Error updating user:', err.message);
-          return res.status(400).send({ error: err.message });
-        });
-    }
-    logger('error')(`Error: ${req.user.email} not allowed to update ${id}.`);
-    return res.status(401).send({ error: 'Not allowed to update this user.' });
+    // custom check on regNumber if it appears to be a valid Czech code
+    // console.log('regNumber:', req.body.regNumber);
+    const checkOris = (req.body.regNumber && req.body.regNumber.match(/([A-Z]|[0-9]){2}[A-Z][0-9]{4}/))
+      ? getOrisId(req.body.regNumber)
+      : Promise.resolve(false);
+    return checkOris.then((orisId) => {
+      if (orisId) {
+        logger('info')(`Setting ORIS id for ${id} to ${orisId}.`);
+        // console.log('orisId to update', orisId);
+        fieldsToUpdate.orisId = orisId;
+      }
+    }).then(() => {
+      const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
+      // console.log('fields to be updated:', numberOfFieldsToUpdate);
+      if (numberOfFieldsToUpdate === 0) {
+        logger('error')('Update user error: no valid fields to update.');
+        return res.status(400).send({ error: 'No valid fields to update.' });
+      }
+      // console.log('fieldsToUpdate:', fieldsToUpdate);
+      const allowedToUpdate = ((requestorRole === 'admin')
+        || (requestorRole === 'standard' && requestorId === id));
+      // console.log('allowedToUpdate', allowedToUpdate);
+      if (allowedToUpdate) {
+        return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+          .select('-password')
+          .then((updatedUser) => {
+            // updatedUser.validate(vErr => console.log('validation error:', vErr));
+            // console.log('updatedUser', updatedUser);
+            logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+            return res.status(200).send(updatedUser);
+          })
+          .catch((err) => {
+            if (err.message.slice(0, 6) === 'E11000') {
+              const duplicate = err.message.split('"')[1];
+              logger('error')(`Error updating user: duplicate value ${duplicate}.`);
+              return res.status(400).send({ error: `${duplicate} is already in use.` });
+            }
+            logger('error')('Error updating user:', err.message);
+            return res.status(400).send({ error: err.message });
+          });
+      }
+      logger('error')(`Error: ${req.user.email} not allowed to update ${id}.`);
+      return res.status(401).send({ error: 'Not allowed to update this user.' });
+    });
   });
 };
 

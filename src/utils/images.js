@@ -2,7 +2,7 @@ const multer = require('multer'); // support for image upload
 const logger = require('./logger');
 
 // multer setup for uploading profile images and maps
-const storage = multer.diskStorage({
+const profileImageStorage = multer.diskStorage({
   destination(req, file, cb) {
     cb(null, 'images/upload');
   },
@@ -19,8 +19,25 @@ const storage = multer.diskStorage({
     cb(null, fileName);
   },
 });
+const mapImageStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    cb(null, 'images/upload');
+  },
+  filename(req, file, cb) {
+    const fileTypes = {
+      'image/png': '.png',
+      'image/jpeg': '.jpg',
+      'image/jpg': '.jpg',
+    };
+    if (!fileTypes[file.mimetype]) {
+      cb(new Error('Needs to be a JPEG or PNG image.'));
+    }
+    const fileName = `${req.params.eventId}-${req.user._id}-${req.params.mapid}-${req.params.maptype}-${fileTypes[file.mimetype]}`;
+    cb(null, fileName);
+  },
+});
 const uploadImage = multer({
-  storage,
+  storage: profileImageStorage,
   limits: {
     fileSize: 1000000, // 1MB limit for profile pics should be plenty!
   },
@@ -33,7 +50,7 @@ const uploadImage = multer({
   // },
 });
 const uploadMap = multer({
-  storage,
+  storage: mapImageStorage,
   limits: {
     fileSize: 5000000, // current collection of scanned maps varies from 1MB to 4MB
   },

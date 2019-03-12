@@ -5,7 +5,7 @@ const Authentication = require('./controllers/authentication');
 const Users = require('./controllers/users');
 const images = require('./utils/images');
 const Clubs = require('./controllers/clubs');
-// const Events = require('./controllers/events');
+const Events = require('./controllers/events');
 
 require('./services/passport'); // passport config
 
@@ -34,8 +34,8 @@ module.exports = (app) => {
   // retrieve full details for the currently logged in user
   app.get('/users/me', requireAuth, Users.getLoggedInUser);
   // retrieve full details for the specified user
-  app.get('/users/:id', requireAuth, Users.getUserById);
   app.get('/users/public/:id', publicRoute, Users.getUserById);
+  app.get('/users/:id', requireAuth, Users.getUserById);
   // update the specified user (multiple amendment not supported)
   app.patch('/users/:id', requireAuth, Users.updateUser);
   // delete the specified user (multiple deletion not supported)
@@ -57,62 +57,62 @@ module.exports = (app) => {
   // delete the specified club (multiple deletion not supported)
   app.delete('/clubs/:id', requireAuth, Clubs.deleteClub);
 
-  // // *** /events routes ***  [OEvent and LinkedEvent models]
-  // // ids need to be more explicit as several levels
-  // // create an event
-  // app.post('/events', requireAuth, Events.createEvent);
-  // // create a map within the specified event
-  // app.post('/events/:eventid/maps', requireAuth, Events.createMap);
-  // // upload a scanned map to the specified map document (maptitle for differentiation)
-  // app.post('/events/:eventid/maps/:mapid/:maptitle', requireAuth,
-  //   Events.validateMapUploadPermission,
-  //   images.uploadMap.single('upload'), Events.postMap, images.errorHandler);
-  // // create a new event linkage between the specified events
-  // app.post('/events/links', requireAuth, Events.createLink);
-  // // retrieve a list of all events (ids) matching specified criteria
-  // //   [may include events without *maps* visible to current user]
-  // app.get('/events', requireAuth, Events.getEventList);
-  // // retrieve a list of all events (ids) with publicly visible maps
-  // //   [unlike authorised list there is no point in events without maps]
-  // app.get('/events/public', publicRoute, Events.getEventList);
-  // // retrieve full details for the specified event
-  // //   [includes embedded maps and basic info for linked events]
-  // app.get('/events/:eventid', requireAuth, Events.getEvent);
-  // // retrieve a list of links between events matching specified criteria
-  // app.get('/events/:eventid/public', publicRoute, Events.getEvent);
-  // // retrieve a list of links between events matching specified criteria
-  // app.get('/events/links', requireAuth, (req, res) => {
-  //   res.send({ message: 'GET /events/links is still TBD' });
-  // });
-  // // retrieve full details of the specified link between events
-  // app.get('/events/links/:id', (req, res) => {
-  //   res.send({ message: 'GET /events/links/:id is still TBD' });
-  // });
-  // // update the specified event (multiple amendment not supported)
-  // app.patch('/events/:id', requireAuth, (req, res) => {
-  //   res.send({ message: 'PATCH /events/:id is still TBD' });
-  // });
-  // // update the specified map (multiple amendment not supported)
-  // app.patch('/events/:id/maps/:id', requireAuth, (req, res) => {
-  //   res.send({ message: 'PATCH /events/:id/maps/:id is still TBD' });
-  // });
-  // // update the specified link between events (multiple amendment not supported)
-  // app.patch('/events/links/:id', requireAuth, (req, res) => {
-  //   res.send({ message: 'PATCH /events/links/:id is still TBD' });
-  // });
-  // // delete the specified event (multiple delete not supported)
-  // //   [also deletes embedded maps if same owner, otherwise fails]
-  // app.delete('/events/:id', requireAuth, (req, res) => {
-  //   res.send({ message: 'DELETE /events/:id is still TBD' });
-  // });
-  // // delete the specified map (multiple delete not supported)
-  // app.delete('/events/:id/maps/:id', requireAuth, (req, res) => {
-  //   res.send({ message: 'DELETE /events/:id/maps/:id is still TBD' });
-  // });
-  // // delete the specified link between events (multiple delete not supported)
-  // app.delete('/events/links/:id', requireAuth, (req, res) => {
-  //   res.send({ message: 'DELETE /events/links/:id is still TBD' });
-  // });
+  // *** /events routes ***  [OEvent and LinkedEvent models]
+  // ids need to be more explicit as there are several types used
+
+  // create an event (event level fields)
+  app.post('/events', requireAuth, Events.createEvent);
+  // create a new event linkage between the specified events
+  app.post('/events/links', requireAuth, Events.createEventLink);
+  // add user as a runner at the specified event (event.runners[] fields except maps)
+  app.post('/events/:eventid/maps', requireAuth, Events.addEventRunner);
+  // upload a scanned map to the specified event map document (maptitle for differentiation)
+  // :mapid is the index in runners.maps, :maptype is either course or route
+  // :maptitle is the label to use for each part of multi-part maps
+  app.post('/events/:eventid/maps/:mapid/:maptype(course|route)/:maptitle', requireAuth,
+    Events.validateMapUploadPermission, images.uploadMap.single('upload'),
+    Events.postMap, images.errorHandler);
+  // Post a new comment against the specified user's map in this event
+  app.post('/events/:eventid/comments/:userid', requireAuth, Events.postComment);
+  // create a new event using oris data *eventid is ORIS event id*
+  // if a corresponding event is already in db, fill empty fields only
+  // create runner fields for logged in user if found in ORIS (i.e. can use to add user to event)
+  app.post('/events/oris/event/:eventid', requireAuth, Events.orisCreateEvent);
+  // create a set of new events and auto-populate them based on the user's ORIS history
+  app.post('/events/oris/user/:userid', requireAuth, Events.orisCreateUserEvents);
+
+  // retrieve a list of all events (ids) matching specified criteria
+  // [may include events without *maps* visible to current user, include number
+  // of (visible) maps in returned list]
+  app.get('/events', requireAuth, Events.getEventList);
+  // retrieve a list of events as an anonymous browser
+  app.get('/events/public', publicRoute, Events.getEventList);
+  // retrieve a list of links between events matching specified criteria
+  app.get('/events/links', publicRoute, Events.getEventLinks);
+  // retrieve full details for the specified event
+  // [including visible maps and basic info for linked events]
+  app.get('/events/:eventid', requireAuth, Events.getEvent);
+  // retrieve all visible details for the specified event as an anonymous browser
+  app.get('/events/:eventid/public', publicRoute, Events.getEvent);
+
+  // update the specified event (multiple amendment not supported)
+  app.patch('/events/:eventid', requireAuth, Events.updateEvent);
+  // update the specified runner and map data (multiple amendment not supported)
+  app.patch('/events/:eventid/maps/:userid', requireAuth, Events.updateEventRunner);
+  // update the specified link between events (multiple amendment not supported)
+  app.patch('/events/links/:id', requireAuth, Events.updateEventLink);
+  // edit the specified comment (multiple amendment not supported)
+  app.patch('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.updateComment);
+
+  // delete the specified event (multiple delete not supported)
+  // [will fail if other users have records attached to event, unless admin]
+  app.delete('/events/:id', requireAuth, Events.deleteEvent);
+  // delete the specified runner and map data (multiple amendment not supported)
+  app.delete('/events/:eventid/maps/:userid', requireAuth, Events.deleteEventRunner);
+  // delete the specified link between events (multiple amendment not supported)
+  app.delete('/events/links/:id', requireAuth, Events.deleteEventLink);
+  // delete the specified comment (multiple amendment not supported)
+  app.delete('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.deleteComment);
 
 
   //    *** to be deleted when others are complete ***

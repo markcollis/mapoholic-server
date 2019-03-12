@@ -5,6 +5,7 @@ const fetch = require('node-fetch');
 const Club = require('../models/club');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
+const { validateUserId } = require('./validateIds');
 
 // *** /clubs routes ***  [Club model]
 
@@ -183,50 +184,54 @@ const updateClub = (req, res) => {
             fieldsToUpdate[key] = req.body[key];
           }
         }
-        // only admin users can change a club's owner
-        if (key === 'owner' && requestorRole === 'admin' && ObjectID.isValid(req.body.owner)) {
-          fieldsToUpdate.owner = req.body.owner;
-        }
       });
-      const checkOris = (fieldsToUpdate.shortName && (fieldsToUpdate.country === 'CZE' || clubToUpdate.country === 'CZE') && fieldsToUpdate.shortName.match(/[A-Z]{3}/))
-        ? getOrisClubData(fieldsToUpdate.shortName)
+      // only admin users can change a club's owner, need to check that ID is really a user
+      const checkOwnerId = (req.body.owner && requestorRole === 'admin')
+        ? validateUserId(req.body.owner)
         : Promise.resolve(false);
-      return checkOris.then((orisData) => {
-        if (orisData) {
-          logger('info')(`Retrieved ORIS data for ${orisData.Abbr}.`);
-          // console.log('orisClubData:', orisData);
-          fieldsToUpdate.orisId = orisData.ID; // only available through API
-          if (!fieldsToUpdate.fullName || fieldsToUpdate.fullName === '') {
-            fieldsToUpdate.fullName = orisData.Name; // use ORIS if not provided
-          }
-          if (!fieldsToUpdate.website || fieldsToUpdate.website === '') {
-            fieldsToUpdate.website = orisData.WWW; // use ORIS if not provided
-          }
-        } else {
-          // console.log('Nothing retrieved from ORIS.');
-        }
+      return checkOwnerId.then((validId) => {
+        if (validId) fieldsToUpdate.owner = req.body.owner;
       }).then(() => {
-        // console.log('fieldsToUpdate:', fieldsToUpdate);
-        const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
-        // console.log('fields to be updated:', numberOfFieldsToUpdate);
-        if (numberOfFieldsToUpdate === 0) {
-          logger('error')('Update club error: no valid fields to update.');
-          return res.status(400).send({ error: 'No valid fields to update.' });
-        }
-        return Club.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
-          .then((updatedClub) => {
-            logger('success')(`${updatedClub.shortName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-            return res.status(200).send(updatedClub);
-          })
-          .catch((err) => {
-            if (err.message.slice(0, 6) === 'E11000') {
-              const duplicate = err.message.split('"')[1];
-              logger('error')(`Error updating club: duplicate value ${duplicate}.`);
-              return res.status(400).send({ error: `${duplicate} is already in use.` });
+        const checkOris = (fieldsToUpdate.shortName && (fieldsToUpdate.country === 'CZE' || clubToUpdate.country === 'CZE') && fieldsToUpdate.shortName.match(/[A-Z]{3}/))
+          ? getOrisClubData(fieldsToUpdate.shortName)
+          : Promise.resolve(false);
+        return checkOris.then((orisData) => {
+          if (orisData) {
+            logger('info')(`Retrieved ORIS data for ${orisData.Abbr}.`);
+            // console.log('orisClubData:', orisData);
+            fieldsToUpdate.orisId = orisData.ID; // only available through API
+            if (!fieldsToUpdate.fullName || fieldsToUpdate.fullName === '') {
+              fieldsToUpdate.fullName = orisData.Name; // use ORIS if not provided
             }
-            logger('error')('Error updating user:', err.message);
-            return res.status(400).send({ error: err.message });
-          });
+            if (!fieldsToUpdate.website || fieldsToUpdate.website === '') {
+              fieldsToUpdate.website = orisData.WWW; // use ORIS if not provided
+            }
+          } else {
+            // console.log('Nothing retrieved from ORIS.');
+          }
+        }).then(() => {
+          // console.log('fieldsToUpdate:', fieldsToUpdate);
+          const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
+          // console.log('fields to be updated:', numberOfFieldsToUpdate);
+          if (numberOfFieldsToUpdate === 0) {
+            logger('error')('Update club error: no valid fields to update.');
+            return res.status(400).send({ error: 'No valid fields to update.' });
+          }
+          return Club.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+            .then((updatedClub) => {
+              logger('success')(`${updatedClub.shortName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+              return res.status(200).send(updatedClub);
+            })
+            .catch((err) => {
+              if (err.message.slice(0, 6) === 'E11000') {
+                const duplicate = err.message.split('"')[1];
+                logger('error')(`Error updating club: duplicate value ${duplicate}.`);
+                return res.status(400).send({ error: `${duplicate} is already in use.` });
+              }
+              logger('error')('Error updating user:', err.message);
+              return res.status(400).send({ error: err.message });
+            });
+        });
       });
     }
     logger('error')(`Error: ${req.user.email} not allowed to update ${id}.`);
@@ -250,7 +255,7 @@ const deleteClub = (req, res) => {
     }
     const allowedToDelete = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === clubToDelete.owner.toString()));
-    console.log('allowedToDelete', allowedToDelete, clubToDelete.shortName);
+    // console.log('allowedToDelete', allowedToDelete, clubToDelete.shortName);
     if (allowedToDelete) {
       const now = new Date();
       const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
