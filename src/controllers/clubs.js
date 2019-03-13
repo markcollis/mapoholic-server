@@ -80,7 +80,7 @@ const createClub = (req, res) => {
       .catch((err) => {
         if (err.message.slice(0, 6) === 'E11000') {
           const duplicate = err.message.split('"')[1];
-          logger('error')(`Error updating user: duplicate value ${duplicate}.`);
+          logger('error')(`Error creating club: duplicate value ${duplicate}.`);
           return res.status(400).send({ error: `${duplicate} is already in use.` });
         }
         logger('error')('Error creating club:', err.message);
@@ -250,7 +250,7 @@ const deleteClub = (req, res) => {
   }
   return Club.findById(id).then((clubToDelete) => {
     if (!clubToDelete) {
-      logger('error')('Error deleting club: no matching user found.');
+      logger('error')('Error deleting club: no matching club found.');
       return res.status(404).send({ error: 'Club could not be found.' });
     }
     const allowedToDelete = ((requestorRole === 'admin')
@@ -288,4 +288,5 @@ module.exports = {
   getClubById,
   updateClub,
   deleteClub,
+  getOrisClubData, // used in events controller rather than router
 };

@@ -77,7 +77,7 @@ module.exports = (app) => {
   // create a new event using oris data *eventid is ORIS event id*
   // if a corresponding event is already in db, fill empty fields only
   // create runner fields for logged in user if found in ORIS (i.e. can use to add user to event)
-  app.post('/events/oris/event/:eventid', requireAuth, Events.orisCreateEvent);
+  app.post('/events/oris/event/:oriseventid', requireAuth, Events.orisCreateEvent);
   // create a set of new events and auto-populate them based on the user's ORIS history
   app.post('/events/oris/user/:userid', requireAuth, Events.orisCreateUserEvents);
 
