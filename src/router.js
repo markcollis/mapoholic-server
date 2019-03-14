@@ -58,12 +58,13 @@ module.exports = (app) => {
   app.delete('/clubs/:id', requireAuth, Clubs.deleteClub);
 
   // *** /events routes ***  [OEvent and LinkedEvent models]
-  // ids need to be more explicit as there are several types used
-
+  // query string ids need to be more explicit as there are several types used
   // create an event (event level fields)
   app.post('/events', requireAuth, Events.createEvent);
-  // create a new event linkage between the specified events
+  // *** DONE ***
+  // create a new event linkage between the specified events (must be at least one event)
   app.post('/events/links', requireAuth, Events.createEventLink);
+  // *** DONE ***
   // add user as a runner at the specified event (event.runners[] fields except maps)
   app.post('/events/:eventid/maps', requireAuth, Events.addEventRunner);
   // upload a scanned map to the specified event map document (maptitle for differentiation)
@@ -78,6 +79,7 @@ module.exports = (app) => {
   // if a corresponding event is already in db, fill empty fields only
   // create runner fields for logged in user if found in ORIS (i.e. can use to add user to event)
   app.post('/events/oris/event/:oriseventid', requireAuth, Events.orisCreateEvent);
+  // *** DONE EXCEPT HANDLING MULTI-DAY EVENTS ***
   // create a set of new events and auto-populate them based on the user's ORIS history
   app.post('/events/oris/user/:userid', requireAuth, Events.orisCreateUserEvents);
 
@@ -85,45 +87,49 @@ module.exports = (app) => {
   // [may include events without *maps* visible to current user, include number
   // of (visible) maps in returned list]
   app.get('/events', requireAuth, Events.getEventList);
+  // *** DONE ***
   // retrieve a list of events as an anonymous browser
   app.get('/events/public', publicRoute, Events.getEventList);
+  // *** DONE ***
   // retrieve a list of links between events matching specified criteria
+  // no need for a get with ID, full contents provided (name and linked events)
   app.get('/events/links', publicRoute, Events.getEventLinks);
+  // *** DONE ***
   // retrieve full details for the specified event
   // [including visible maps and basic info for linked events]
   app.get('/events/:eventid', requireAuth, Events.getEvent);
+  // *** DONE ***
   // retrieve all visible details for the specified event as an anonymous browser
   app.get('/events/:eventid/public', publicRoute, Events.getEvent);
+  // *** DONE ***
 
   // update the specified event (multiple amendment not supported)
   app.patch('/events/:eventid', requireAuth, Events.updateEvent);
+  // *** DONE ***
   // update the specified runner and map data (multiple amendment not supported)
   app.patch('/events/:eventid/maps/:userid', requireAuth, Events.updateEventRunner);
   // update the specified link between events (multiple amendment not supported)
-  app.patch('/events/links/:id', requireAuth, Events.updateEventLink);
+  app.patch('/events/links/:eventlinkid', requireAuth, Events.updateEventLink);
+  // *** DONE ***
   // edit the specified comment (multiple amendment not supported)
   app.patch('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.updateComment);
 
   // delete the specified event (multiple delete not supported)
   // [will fail if other users have records attached to event, unless admin]
-  app.delete('/events/:id', requireAuth, Events.deleteEvent);
+  app.delete('/events/:eventid', requireAuth, Events.deleteEvent);
+  // *** DONE ***
   // delete the specified runner and map data (multiple amendment not supported)
   app.delete('/events/:eventid/maps/:userid', requireAuth, Events.deleteEventRunner);
   // delete the specified link between events (multiple amendment not supported)
-  app.delete('/events/links/:id', requireAuth, Events.deleteEventLink);
+  // NOTE: not expected to be used except for administrative tidying - the normal
+  // removal approach will be through editing the event to remove it from the linked set
+  // *hence this route will be constrained to admin users only*
+  app.delete('/events/links/:eventlinkid', requireAuth, Events.deleteEventLink);
   // delete the specified comment (multiple amendment not supported)
   app.delete('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.deleteComment);
 
 
-  //    *** to be deleted when others are complete ***
-  app.get('/test', (req, res) => {
-    res.send({ greeting: 'Hi there! No auth required here.' });
-  });
-  app.get('/', requireAuth, (req, res) => {
-    res.send({ greeting: 'Hi there!' });
-  });
-  // add any other routes as required following the same pattern with
-  // requireAuth and a callback for the desired action
+  //    *** from initial testing, to be deleted when others are complete ***
   app.post('/login', requireLogin, Authentication.login); // => /users, front end to be changed
   app.post('/signup', Authentication.signup); // => /users, front end to be changed
 };

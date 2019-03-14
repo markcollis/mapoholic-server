@@ -308,6 +308,10 @@ const deleteUser = (req, res) => {
         .then((deletedUser) => {
           // console.log('deletedUser', deletedUser);
           logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
+          // Should we now check and remove references? orphan profile images?
+          // 1. Owners of club and event records - replace with another? who?
+          // 2. Runner records within events - delete runner completely? orphan map files?
+          // 3. Comment authors - delete comments completely?
           return res.status(200).send(deletedUser);
         })
         .catch((err) => {

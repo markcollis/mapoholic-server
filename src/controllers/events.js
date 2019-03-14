@@ -7,10 +7,15 @@ const fetch = require('node-fetch');
 // const User = require('../models/user');
 const Club = require('../models/club');
 const Event = require('../models/oevent');
-// const LinkedEvent = require('../models/linkedEvent');
+const LinkedEvent = require('../models/linkedEvent');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
-const { validateClubIds, validateLinkedEventIds } = require('./validateIds');
+const {
+  validateClubIds,
+  validateEventIds,
+  validateLinkedEventIds,
+  validateUserId,
+} = require('./validateIds');
 const { getOrisClubData } = require('./clubs');
 
 // POST routes
@@ -41,7 +46,7 @@ const createEvent = (req, res) => {
       return res.status(400).send({ error: `Error creating event: The event ${eventName} on ${eventDate} already exists.` });
     }
     const fieldsToCreate = { owner: creatorId };
-    const validFields = [ // owner is creator, orisId is only used by oris methods
+    const validFields = [ // owner is creator, orisId is only used by oris-specific routes
       'date',
       'name',
       'mapName',
@@ -75,16 +80,16 @@ const createEvent = (req, res) => {
       if (linkedEventIds) {
         fieldsToCreate.linkedTo = linkedEventIds;
       }
-    }).then(() => {
-      // separate handling to check ObjectID validity (i.e. that it IS an ObjectID,
-      // not that it exists as a User or LinkedEvent)
-      // console.log('fieldsToCreate:', fieldsToCreate);
       const newEvent = new Event(fieldsToCreate);
       return newEvent.save()
         .then((savedEvent) => {
-          // console.log('savedEvent', savedEvent);
-          logger('success')(`${savedEvent.name} on ${savedEvent.date} created by ${req.user.email}.`);
-          return res.status(200).send(savedEvent);
+          // add event reference to linkedEvents if there are any
+          LinkedEvent.updateMany({ _id: { $in: (linkedEventIds || []) } },
+            { $addToSet: { includes: savedEvent._id } })
+            .then(() => {
+              logger('success')(`${savedEvent.name} on ${savedEvent.date} created by ${req.user.email}.`);
+              return res.status(200).send(savedEvent);
+            });
         });
     }).catch((err) => {
       logger('error')('Error creating event:', err.message);
@@ -92,11 +97,58 @@ const createEvent = (req, res) => {
     });
   });
 };
+
 // create a new event linkage between the specified events
 const createEventLink = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const creatorRole = req.user.role;
+  const eventLinkName = req.body.displayName;
+  const eventLinkIncludes = req.body.includes;
+  // simple validation checks
+  if (creatorRole === 'guest') {
+    logger('error')('Error creating event link: Guest accounts can not create an event link.');
+    return res.status(401).send({ error: 'Guest accounts are not allowed to create an event link.' });
+  }
+  if (!eventLinkName) {
+    logger('error')('Error creating event link: No name provided.');
+    return res.status(400).send({ error: 'You must provide a name for the event link.' });
+  }
+  return LinkedEvent.findOne({ displayName: eventLinkName }).then((existingLinkedEvent) => {
+    if (existingLinkedEvent) {
+      logger('error')(`Error creating event link: The event link ${eventLinkName} already exists.`);
+      return res.status(400).send({ error: `Error creating event link: The event link ${eventLinkName} already exists.` });
+    }
+    const fieldsToCreate = { displayName: eventLinkName };
+    // includes needs special treatment: array of ObjectIDs
+    // note that these will REPLACE the existing array not add to it/edit it
+    const checkEventIds = (eventLinkIncludes && Array.isArray(eventLinkIncludes))
+      ? validateEventIds(eventLinkIncludes)
+      : Promise.resolve(false);
+    return checkEventIds.then((eventIds) => {
+      if (!eventIds) {
+        logger('error')('Error creating event link: No valid event IDs found.');
+        return res.status(400).send({ error: 'Error creating event link: No valid event IDs found' });
+      }
+      fieldsToCreate.includes = eventIds;
+      const newLinkedEvent = new LinkedEvent(fieldsToCreate);
+      return newLinkedEvent.save()
+        .then((savedLinkedEvent) => {
+          // now add the linkedEvent reference to the events concerned
+          Event.updateMany({ _id: { $in: eventIds } },
+            { $addToSet: { linkedTo: savedLinkedEvent._id } },
+            { new: true })
+            .then(() => {
+              logger('success')(`${savedLinkedEvent.displayName} created by ${req.user.email}.`);
+              return res.status(200).send(savedLinkedEvent);
+            });
+        });
+    }).catch((err) => {
+      logger('error')('Error creating event link:', err.message);
+      return res.status(400).send({ error: err.message });
+    });
+  });
 };
+
 // add user as a runner at the specified event (event.runners[] fields except maps)
 const addEventRunner = (req, res) => {
   logReq(req);
@@ -130,8 +182,10 @@ const orisCreateEvent = (req, res) => {
       const eventData = orisEvent.Data;
       // console.log('eventData:', eventData);
       if (eventData.Stages !== '0') {
+        const includedEvents = [eventData.Stage1, eventData.Stage2, eventData.Stage3,
+          eventData.Stage4, eventData.Stage5, eventData.Stage6, eventData.Stage7];
         logger('error')('Error creating event from ORIS: multi-stage event parent');
-        return res.status(400).send({ error: 'This ORIS event ID is the parent of a multi-stage event.' });
+        return res.status(400).send({ error: `This ORIS event ID is the parent of a multi-stage event. The individual events are ${includedEvents}.` });
       }
       // later work once linkedEvent ready - add the following 'big picture' actions instead:
       // 1. if Stages !== "0" create a linkedEvent record *instead* and then the events within
@@ -185,20 +239,19 @@ const orisCreateEvent = (req, res) => {
       if (!['E', 'ET', 'S', 'OST'].includes(eventData.Level.ShortName)) {
         req.body.tags = [eventData.Level.NameCZ];
       }
-      // organisedBy: Data.Org1.ID, Data.Org2.ID (corresponding to Club.orisId)
-      // => create club if it doesn't exist?
+      // check to see if clubs exist and, if so, get their id; otherwise create them
       const firstClub = eventData.Org1.Abbr;
       const secondClub = eventData.Org2.Abbr || false;
       return Club.find({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
         const foundClubsAbbr = foundClubs.map(foundClub => foundClub.shortName);
         const foundClubsIds = foundClubs.map(foundClub => foundClub._id);
-        console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
+        // console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
         const clubOneExists = foundClubsAbbr.includes(firstClub);
         const clubTwoExists = foundClubsAbbr.includes(secondClub);
         const checkOrisOne = (clubOneExists) ? Promise.resolve(false) : getOrisClubData(firstClub);
         const checkOrisTwo = (clubTwoExists) ? Promise.resolve(false) : getOrisClubData(secondClub);
         Promise.all([checkOrisOne, checkOrisTwo]).then((orisData) => {
-          console.log('orisData:', orisData);
+          // console.log('orisData:', orisData);
           const createClubs = orisData.map((clubData) => {
             if (!clubData) return Promise.resolve(false);
             const fieldsToCreate = {
@@ -217,8 +270,8 @@ const orisCreateEvent = (req, res) => {
           });
           Promise.all(createClubs).then((createdClubs) => {
             const createdClubsIds = createdClubs.map(createdClub => createdClub._id);
-            console.log('createdClubsIds', createdClubsIds);
-            console.log('foundClubsIds', foundClubsIds);
+            // console.log('createdClubsIds', createdClubsIds);
+            // console.log('foundClubsIds', foundClubsIds);
             req.body.organisedBy = createdClubsIds.concat(foundClubsIds);
             return createEvent(req, res);
           }).catch((err) => {
@@ -270,8 +323,21 @@ const getEventList = (req, res) => {
         eventSearchCriteria.req.query[key] = req.query[key];
       }
     }
-    // locLat and locLong need a different approach (<, >) as they are numbers, not strings
   });
+  // locLat and locLong need a different approach (<, >) as they are numbers, not strings
+  // query of the format ?lat=x-y / ?lat=x- / ?lat=-y for ranges sought
+  if (req.query.locLat) {
+    const lowLat = parseFloat(req.query.locLat.split('-')[0]) || 0;
+    const highLat = parseFloat(req.query.locLat.split('-')[1]) || 90;
+    // console.log('low', low, 'high', high);
+    eventSearchCriteria.locLat = { $gt: lowLat, $lt: highLat };
+  }
+  if (req.query.locLong) {
+    const lowLong = parseFloat(req.query.locLong.split('-')[0]) || -180;
+    const highLong = parseFloat(req.query.locLong.split('-')[1]) || 180;
+    // console.log('low', low, 'high', high);
+    eventSearchCriteria.locLong = { $gt: lowLong, $lt: highLong };
+  }
   // console.log('eventSearchCriteria:', JSON.stringify(eventSearchCriteria));
   Event.find(eventSearchCriteria)
     .populate('owner', '_id displayName')
@@ -337,7 +403,28 @@ const getEventList = (req, res) => {
 // retrieve a list of links between events matching specified criteria
 const getEventLinks = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const eventLinkSearchCriteria = {};
+  if (req.query.displayName) { // filter by name
+    eventLinkSearchCriteria.displayName = { $regex: new RegExp(req.query.displayName) };
+  }
+  if (req.query.includes) { // filter by event (to include this specific event)
+    if (ObjectID.isValid(req.query.includes)) {
+      eventLinkSearchCriteria.includes = req.query.includes;
+    } else {
+      eventLinkSearchCriteria.includes = null;
+    }
+  }
+  LinkedEvent.find(eventLinkSearchCriteria)
+    .populate('includes', '_id name date')
+    .select('-__v')
+    .then((linkedEvents) => {
+      logger('success')(`Returned list of ${linkedEvents.length} event link(s).`);
+      return res.status(200).send(linkedEvents);
+    })
+    .catch((err) => {
+      logger('error')('Error getting list of event links:', err.message);
+      return res.status(400).send(err.message);
+    });
 };
 
 // retrieve full details for the specified event
@@ -403,18 +490,207 @@ const getEvent = (req, res) => {
 // update the specified event (multiple amendment not supported)
 const updateEvent = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const { eventid } = req.params;
+  const requestorRole = req.user.role;
+  const requestorId = req.user._id.toString();
+  if (requestorRole === 'guest') {
+    logger('error')('Error: Guest accounts are not allowed to edit events.');
+    return res.status(401).send({ error: 'Guest accounts are not allowed to edit events.' });
+  }
+  if (!ObjectID.isValid(eventid)) {
+    logger('error')('Error updating event: invalid ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  if (req.body.date) { // check that the date is valid IF an updated one is provided
+    if (!req.body.date.match(/[1|2][0-9]{3}-((0[13578]|1[02])-(0[1-9]|[12][0-9]|3[01])|(0[469]|11)-(0[1-9]|[12][0-9]|30)|02-(0[1-9]|[12][0-9]))/)) {
+      logger('error')('Error updating event: Invalid date provided.');
+      return res.status(400).send({ error: 'The date format required is a string of the form YYYY-MM-DD.' });
+    } // note: basic input validation, doesn't check for leap years so 2019-02-29 would pass
+  }
+  // now check that the date/name combination doesn't already exist
+  return Event.findOne({ date: req.body.date, name: req.body.name }).then((existingEvent) => {
+    if (existingEvent && existingEvent._id.toString() !== eventid) {
+      logger('error')(`Error updating event: The event ${req.body.name} on ${req.body.date} already exists.`);
+      return res.status(400).send({ error: `Error updating event: The event ${req.body.name} on ${req.body.date} already exists.` });
+    }
+    // now need to check database to identify owner and runners
+    return Event.findById(eventid).then((eventToUpdate) => {
+      if (!eventToUpdate) {
+        logger('error')('Error updating event: no matching event found.');
+        return res.status(404).send({ error: 'Event could not be found.' });
+      }
+      const runnerIds = (eventToUpdate.runners.length === 0)
+        ? []
+        : eventToUpdate.runners.map(runner => runner.user);
+      // console.log('runnerIds:', runnerIds);
+      const currentLinkedEvents = (eventToUpdate.linkedTo.length === 0)
+        ? []
+        : eventToUpdate.linkedTo.map(linkedEvent => linkedEvent.toString());
+      console.log('currentLinkedEvents:', currentLinkedEvents);
+      const allowedToUpdate = ((requestorRole === 'admin')
+      || (requestorRole === 'standard' && requestorId === eventToUpdate.owner.toString())
+      || (requestorRole === 'standard' && runnerIds.includes(requestorId)));
+      // console.log('allowedToUpdate', allowedToUpdate);
+      if (allowedToUpdate) {
+        const fieldsToUpdate = { };
+        const validFields = [
+          // Note: it is not possible to add an ORIS event ID and auto-populate if
+          // an event wasn't created from ORIS originally. If there is a demand for
+          // this it would be using e.g. PATCH /event/:eventid/oris/:oriseventid
+          // calling a new, different function. Not a priority for now.
+          'date',
+          'name',
+          'mapName',
+          'locPlace',
+          'locRegions', // []
+          'locCountry',
+          'locLat',
+          'locLong',
+          'types', // []
+          'tags', // []
+          'website',
+          'results',
+        ];
+        Object.keys(req.body).forEach((key) => {
+          if (validFields.includes(key)) {
+            fieldsToUpdate[key] = req.body[key];
+          }
+        });
+        // organisedBy and linkedTo need special treatment: array of ObjectIDs
+        // note that these will REPLACE the existing array not add to it/edit it
+        const checkClubIds = (req.body.organisedBy && Array.isArray(req.body.organisedBy))
+          ? validateClubIds(req.body.organisedBy)
+          : Promise.resolve(false);
+        const checkLinkedEventIds = (req.body.linkedTo && Array.isArray(req.body.linkedTo))
+          ? validateLinkedEventIds(req.body.linkedTo)
+          : Promise.resolve(false);
+        // only admin users can change a club's owner, need to check that ID is really a user
+        const checkOwnerId = (req.body.owner && requestorRole === 'admin')
+          ? validateUserId(req.body.owner)
+          : Promise.resolve(false);
+        return Promise.all([checkClubIds, checkLinkedEventIds, checkOwnerId])
+          .then(([clubIds, linkedEventIds, ownerId]) => {
+            if (clubIds) {
+              fieldsToUpdate.organisedBy = clubIds;
+            }
+            if (linkedEventIds) {
+              fieldsToUpdate.linkedTo = linkedEventIds;
+            }
+            const newLinkedEvents = (linkedEventIds)
+              ? linkedEventIds.map(el => el.toString())
+              : eventToUpdate.linkedTo;
+            console.log('newLinkedEvents:', newLinkedEvents);
+            const addedLinkedEventIds = newLinkedEvents
+              .filter(id => !currentLinkedEvents.includes(id));
+            const removedLinkedEventIds = currentLinkedEvents
+              .filter(id => !newLinkedEvents.includes(id));
+            console.log('added:', addedLinkedEventIds, 'removed:', removedLinkedEventIds);
+            if (ownerId) fieldsToUpdate.owner = req.body.owner;
+            // console.log('fieldsToUpdate:', fieldsToUpdate);
+            const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
+            // console.log('fields to be updated:', numberOfFieldsToUpdate);
+            if (numberOfFieldsToUpdate === 0) {
+              logger('error')('Update event error: no valid fields to update.');
+              return res.status(400).send({ error: 'No valid fields to update.' });
+            }
+            return Event.findByIdAndUpdate(eventid, { $set: fieldsToUpdate }, { new: true })
+              .then((updatedEvent) => {
+                // now change the Event references in relevant LinkedEvents
+                LinkedEvent.updateMany({ _id: { $in: (addedLinkedEventIds || []) } },
+                  { $addToSet: { includes: updatedEvent._id } })
+                  .then(() => {
+                    LinkedEvent.updateMany({ _id: { $in: (removedLinkedEventIds || []) } },
+                      { $pull: { includes: updatedEvent._id } })
+                      .then(() => {
+                        logger('success')(`${updatedEvent.name} (${updatedEvent.date}) updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+                        return res.status(200).send(updatedEvent);
+                      });
+                  });
+              })
+              .catch((err) => {
+                logger('error')('Error updating event:', err.message);
+                return res.status(400).send({ error: err.message });
+              });
+          });
+      }
+      logger('error')(`Error: ${req.user.email} not allowed to update ${eventid}.`);
+      return res.status(401).send({ error: 'Not allowed to update this event.' });
+    });
+  }).catch((err) => {
+    logger('error')('Error updating event:', err.message);
+    return res.status(400).send({ error: err.message });
+  });
 };
+
 // update the specified runner and map data (multiple amendment not supported)
 const updateEventRunner = (req, res) => {
   logReq(req);
   res.send('not done yet');
 };
+
 // update the specified link between events (multiple amendment not supported)
 const updateEventLink = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const { eventlinkid } = req.params;
+  const requestorRole = req.user.role;
+  if (requestorRole === 'guest') { // guests can't edit, but all standard users can
+    logger('error')('Error: Guest accounts are not allowed to edit event links.');
+    return res.status(401).send({ error: 'Guest accounts are not allowed to edit event links.' });
+  }
+  if (!ObjectID.isValid(eventlinkid)) {
+    logger('error')('Error updating event link: invalid ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  return LinkedEvent.findById(eventlinkid).then((linkedEventToUpdate) => {
+    if (!linkedEventToUpdate) {
+      logger('error')('Error updating event link: no matching event found.');
+      return res.status(404).send({ error: 'Event link could not be found.' });
+    }
+    const currentIncludes = linkedEventToUpdate.includes.map(el => el.toString());
+    console.log('includes before editing:', currentIncludes);
+    const fieldsToUpdate = {};
+    if (req.body.displayName && req.body.displayName !== linkedEventToUpdate.displayName) {
+      fieldsToUpdate.displayName = req.body.displayName;
+    }
+    const checkEventIds = (req.body.includes && Array.isArray(req.body.includes))
+      ? validateEventIds(req.body.includes)
+      : Promise.resolve(false);
+    return checkEventIds.then((eventIds) => {
+      if (eventIds) fieldsToUpdate.includes = eventIds;
+      const newIncludes = (eventIds)
+        ? eventIds.map(el => el.toString())
+        : linkedEventToUpdate.includes;
+      console.log('eventIds to be new includes:', newIncludes);
+      const addedEventIds = newIncludes.filter(eventId => !currentIncludes.includes(eventId));
+      const removedEventIds = currentIncludes.filter(eventId => !newIncludes.includes(eventId));
+      console.log('added, removed:', addedEventIds, removedEventIds);
+      const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
+      if (numberOfFieldsToUpdate === 0) {
+        logger('error')('Update event link error: no valid fields to update.');
+        return res.status(400).send({ error: 'No valid fields to update.' });
+      }
+      return LinkedEvent.findByIdAndUpdate(eventlinkid, { $set: fieldsToUpdate }, { new: true })
+        .then((updatedLinkedEvent) => {
+          // now change the linkedEvent references in relevant Events
+          Event.updateMany({ _id: { $in: (addedEventIds || []) } },
+            { $addToSet: { linkedTo: updatedLinkedEvent._id } })
+            .then(() => {
+              Event.updateMany({ _id: { $in: (removedEventIds || []) } },
+                { $pull: { linkedTo: updatedLinkedEvent._id } })
+                .then(() => {
+                  logger('success')(`${updatedLinkedEvent.displayName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+                  return res.status(200).send(updatedLinkedEvent);
+                });
+            });
+        })
+        .catch((err) => {
+          logger('error')('Error updating linked event:', err.message);
+          return res.status(400).send({ error: err.message });
+        });
+    });
+  });
 };
+
 // edit the specified comment (multiple amendment not supported)
 const updateComment = (req, res) => {
   logReq(req);
@@ -422,18 +698,18 @@ const updateComment = (req, res) => {
 };
 
 // DELETE routes
-// delete the specified event (multiple delete not supported)
+// delete the specified event (multiple delete not supported) - actually sets active=false
 // [will fail if other users have records attached to event, unless admin]
 const deleteEvent = (req, res) => {
   logReq(req);
-  const { id } = req.params;
+  const { eventid } = req.params;
   const requestorRole = req.user.role;
   const requestorId = req.user._id.toString();
-  if (!ObjectID.isValid(id)) {
+  if (!ObjectID.isValid(eventid)) {
     logger('error')('Error deleting event: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  return Event.findById(id).then((eventToDelete) => {
+  return Event.findById(eventid).then((eventToDelete) => {
     if (!eventToDelete) {
       logger('error')('Error deleting event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
@@ -459,33 +735,72 @@ const deleteEvent = (req, res) => {
         .concat((`0${now.getHours()}`).slice(-2))
         .concat((`0${now.getMinutes()}`).slice(-2));
       const newName = `${eventToDelete.name} ${deletedAt}`;
-      return Event.findByIdAndUpdate(id,
+      return Event.findByIdAndUpdate(eventid,
         { $set: { active: false, name: newName } },
         { new: true })
         .then((deletedEvent) => {
-          logger('success')(`Successfully deleted event ${deletedEvent._id} (${deletedEvent.name})`);
-          return res.status(200).send(deletedEvent);
+          // console.log('deleted linkedTo', deletedEvent.linkedTo);
+          // delete any references in LinkedEvents
+          LinkedEvent.updateMany({ _id: { $in: (deletedEvent.linkedTo || []) } },
+            { $pull: { includes: deletedEvent._id } }).then(() => {
+            logger('success')(`Successfully deleted event ${deletedEvent._id} (${deletedEvent.name})`);
+            return res.status(200).send(deletedEvent);
+          });
         })
         .catch((err) => {
           logger('error')('Error deleting event:', err.message);
           return res.status(400).send({ error: err.message });
         });
     }
-    logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
+    logger('error')(`Error: ${req.user.email} not allowed to delete ${eventid}.`);
     return res.status(401).send({ error: 'Not allowed to delete this event.' });
   });
 };
-// delete the specified runner and map data (multiple amendment not supported)
+// delete the specified runner and map data (multiple amendment not supported) - actually deletes!
 const deleteEventRunner = (req, res) => {
   logReq(req);
   res.send('not done yet');
 };
-// delete the specified link between events (multiple amendment not supported)
+// delete the specified link between events (multiple amendment not supported) - actually deletes!
 const deleteEventLink = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const { eventlinkid } = req.params;
+  const requestorRole = req.user.role;
+  if (!ObjectID.isValid(eventlinkid)) {
+    logger('error')('Error deleting event link: invalid ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  // only admin users are allowed to delete linkedEvents
+  if (requestorRole === 'admin') {
+    return LinkedEvent.findById(eventlinkid).then((linkedEventToDelete) => {
+      if (!linkedEventToDelete) {
+        logger('error')('Error deleting event link: no matching event link found.');
+        return res.status(404).send({ error: 'Event link could not be found.' });
+      }
+      return LinkedEvent.deleteOne({ _id: eventlinkid }).then((deletion) => {
+        if (deletion.deletedCount === 1) {
+          Event.updateMany({ _id: { $in: (linkedEventToDelete.includes || []) } },
+            { $pull: { linkedTo: linkedEventToDelete._id } })
+            .then(() => {
+              logger('success')(`Successfully deleted event link ${linkedEventToDelete._id} (${linkedEventToDelete.displayName})`);
+              return res.status(200).send(linkedEventToDelete);
+            });
+          // should now go through and delete all references from Event.linkedTo
+        }
+        logger('error')('Error deleting event link: deletedCount not 1');
+        return res.status(400).send({ error: 'Error deleting event link: deletedCount not 1' });
+      })
+        .catch((err) => {
+          logger('error')('Error deleting event link:', err.message);
+          return res.status(400).send({ error: err.message });
+        });
+    });
+  }
+  logger('error')(`Error: ${req.user.email} not allowed to delete ${eventlinkid}.`);
+  return res.status(401).send({ error: 'Not allowed to delete this event link.' });
 };
-// delete the specified comment (multiple amendment not supported)
+
+// delete the specified comment (multiple amendment not supported) - actually deletes!
 const deleteComment = (req, res) => {
   logReq(req);
   res.send('not done yet');

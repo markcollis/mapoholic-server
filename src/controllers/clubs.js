@@ -270,6 +270,8 @@ const deleteClub = (req, res) => {
         { new: true })
         .then((deletedClub) => {
           logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
+          // should we now go through and delete all references from User.memberOf
+          // and Event.organisedBy??
           return res.status(200).send(deletedClub);
         })
         .catch((err) => {
