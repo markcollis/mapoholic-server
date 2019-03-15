@@ -152,7 +152,68 @@ const createEventLink = (req, res) => {
 // add user as a runner at the specified event (event.runners[] fields except maps)
 const addEventRunner = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const { eventid } = req.params;
+  const requestorRole = req.user.role;
+  const requestorId = req.user._id.toString();
+  if (requestorRole === 'guest') {
+    logger('error')('Error: Guest accounts are not allowed to edit events.');
+    return res.status(401).send({ error: 'Guest accounts are not allowed to edit events.' });
+  }
+  if (!ObjectID.isValid(eventid)) {
+    logger('error')('Error adding runner to event: invalid ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  // now need to check database to identify existing runners
+  return Event.findById(eventid).then((eventToAddRunnerTo) => {
+    if (!eventToAddRunnerTo) {
+      logger('error')('Error adding runner to event: no matching event found.');
+      return res.status(404).send({ error: 'Event could not be found.' });
+    }
+    const runnerIds = (eventToAddRunnerTo.runners.length === 0)
+      ? []
+      : eventToAddRunnerTo.runners.map(runner => runner.user.toString());
+    // console.log('runnerIds:', runnerIds);
+    if (runnerIds.includes(requestorId)) {
+      logger('error')('Error adding runner to event: runner already present.');
+      return res.status(400).send({ error: 'Runner already present in event. Use PATCH to update.' });
+    }
+    const fieldsToCreateRunner = { user: requestorId };
+    const validFields = [ // all except maps and comments which have their own POST routes
+      'visibility',
+      // course details from ORIS getEvent Data.Classes.Class_nnnn.
+      'courseTitle', // ORIS Name
+      'courseLength', // ORIS Distance (km)
+      'courseClimb', // ORIS Climbing (m)
+      'courseControls', // ORIS Controls
+      'fullResults', // [] allowed to submit manually, front end might not support initially though
+      // following can be obtained if ORIS hosts results via getEventResults&eventid&classid
+      'time', // hhh:mm Data.Result_nnnnn.Time [UserID=orisId]
+      'place', // Data.Result_nnnn.Place
+      'timeBehind', // Data.Result_nnnn.Loss
+      'fieldSize', // can work out from ORIS result set length
+      'distanceRun', // actual km - from GPS (or some manual measurement of route length)
+      'tags', // []
+    ];
+    Object.keys(req.body).forEach((key) => {
+      if (validFields.includes(key)) {
+        fieldsToCreateRunner[key] = req.body[key];
+      }
+    });
+    // console.log('fieldsToCreateRunner:', fieldsToCreateRunner);
+    return Event.findByIdAndUpdate(eventid, { $addToSet: { runners: fieldsToCreateRunner } },
+      { new: true })
+      .then((updatedEvent) => {
+        logger('success')(`Added ${req.user.email} as runner to ${updatedEvent.name} (${updatedEvent.date}).`);
+        return res.status(200).send(updatedEvent);
+      })
+      .catch((err) => {
+        logger('error')('Error updating event:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
+  }).catch((err) => {
+    logger('error')('Error adding runner to event:', err.message);
+    return res.status(400).send({ error: err.message });
+  });
 };
 // Post a new comment against the specified user's map in this event
 const postComment = (req, res) => {
@@ -243,17 +304,19 @@ const orisCreateEvent = (req, res) => {
       const firstClub = eventData.Org1.Abbr;
       const secondClub = eventData.Org2.Abbr || false;
       return Club.find({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
+        // console.log('foundClubs:', foundClubs);
         const foundClubsAbbr = foundClubs.map(foundClub => foundClub.shortName);
         const foundClubsIds = foundClubs.map(foundClub => foundClub._id);
         // console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
-        const clubOneExists = foundClubsAbbr.includes(firstClub);
-        const clubTwoExists = foundClubsAbbr.includes(secondClub);
-        const checkOrisOne = (clubOneExists) ? Promise.resolve(false) : getOrisClubData(firstClub);
-        const checkOrisTwo = (clubTwoExists) ? Promise.resolve(false) : getOrisClubData(secondClub);
+        const clubOneNeeded = firstClub && !foundClubsAbbr.includes(firstClub);
+        const clubTwoNeeded = secondClub && !foundClubsAbbr.includes(secondClub);
+        const checkOrisOne = (clubOneNeeded) ? getOrisClubData(firstClub) : Promise.resolve(false);
+        const checkOrisTwo = (clubTwoNeeded) ? getOrisClubData(secondClub) : Promise.resolve(false);
         Promise.all([checkOrisOne, checkOrisTwo]).then((orisData) => {
           // console.log('orisData:', orisData);
           const createClubs = orisData.map((clubData) => {
             if (!clubData) return Promise.resolve(false);
+            // console.log('clubData:', clubData);
             const fieldsToCreate = {
               owner: req.user._id,
               shortName: clubData.Abbr,
@@ -448,7 +511,11 @@ const getEvent = (req, res) => {
     .populate('owner', '_id displayName')
     .populate('organisedBy', '_id shortName')
     .populate('linkedTo', '_id displayName')
-    .populate('runners.user', '_id displayName fullName regNumber orisId memberOf profileImage visibility')
+    .populate({
+      path: 'runners.user',
+      select: '_id displayName fullName regNumber orisId profileImage visibility',
+      populate: { path: 'memberOf', select: '_id shortName' },
+    })
     .select('-active -__v')
     .then((foundEvent) => {
       if (!foundEvent) {
@@ -526,7 +593,7 @@ const updateEvent = (req, res) => {
       const currentLinkedEvents = (eventToUpdate.linkedTo.length === 0)
         ? []
         : eventToUpdate.linkedTo.map(linkedEvent => linkedEvent.toString());
-      console.log('currentLinkedEvents:', currentLinkedEvents);
+      // console.log('currentLinkedEvents:', currentLinkedEvents);
       const allowedToUpdate = ((requestorRole === 'admin')
       || (requestorRole === 'standard' && requestorId === eventToUpdate.owner.toString())
       || (requestorRole === 'standard' && runnerIds.includes(requestorId)));
@@ -579,12 +646,12 @@ const updateEvent = (req, res) => {
             const newLinkedEvents = (linkedEventIds)
               ? linkedEventIds.map(el => el.toString())
               : eventToUpdate.linkedTo;
-            console.log('newLinkedEvents:', newLinkedEvents);
+            // console.log('newLinkedEvents:', newLinkedEvents);
             const addedLinkedEventIds = newLinkedEvents
               .filter(id => !currentLinkedEvents.includes(id));
             const removedLinkedEventIds = currentLinkedEvents
               .filter(id => !newLinkedEvents.includes(id));
-            console.log('added:', addedLinkedEventIds, 'removed:', removedLinkedEventIds);
+            // console.log('added:', addedLinkedEventIds, 'removed:', removedLinkedEventIds);
             if (ownerId) fieldsToUpdate.owner = req.body.owner;
             // console.log('fieldsToUpdate:', fieldsToUpdate);
             const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
@@ -625,7 +692,84 @@ const updateEvent = (req, res) => {
 // update the specified runner and map data (multiple amendment not supported)
 const updateEventRunner = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const { eventid, userid } = req.params;
+  const requestorRole = req.user.role;
+  const requestorId = req.user._id.toString();
+  if (requestorRole === 'guest') {
+    logger('error')('Error: Guest accounts are not allowed to edit events.');
+    return res.status(401).send({ error: 'Guest accounts are not allowed to edit events.' });
+  }
+  if (!ObjectID.isValid(eventid)) {
+    logger('error')('Error updating runner at event: invalid event ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  if (!ObjectID.isValid(userid)) {
+    logger('error')('Error updating runner at event: invalid runner ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  // now need to check database to confirm that runner at event exists
+  return Event.findById(eventid).then((eventToUpdateRunnerAt) => {
+    if (!eventToUpdateRunnerAt) {
+      logger('error')('Error updating runner at event: no matching event found.');
+      return res.status(404).send({ error: 'Event could not be found.' });
+    }
+    const runnerIds = (eventToUpdateRunnerAt.runners.length === 0)
+      ? []
+      : eventToUpdateRunnerAt.runners.map(runner => runner.user.toString());
+    // console.log('runnerIds:', runnerIds);
+    if (!runnerIds.includes(userid)) {
+      logger('error')('Error updating runner at event: runner not present.');
+      return res.status(400).send({ error: 'Runner not present in event. Use POST to add.' });
+    }
+    const allowedToUpdate = ((requestorRole === 'admin')
+    || (requestorRole === 'standard' && requestorId === userid));
+    if (allowedToUpdate) {
+      const fieldsToUpdateRunner = {};
+      const validFields = [ // all except comments which have their own PATCH route
+        'visibility',
+        'courseTitle', // ORIS Name
+        'courseLength', // ORIS Distance (km)
+        'courseClimb', // ORIS Climbing (m)
+        'courseControls', // ORIS Controls
+        'fullResults', // [] will replace entire set of results recorded
+        'time', // hhh:mm Data.Result_nnnnn.Time [UserID=orisId]
+        'place', // Data.Result_nnnn.Place
+        'timeBehind', // Data.Result_nnnn.Loss
+        'fieldSize', // can work out from ORIS result set length
+        'distanceRun', // actual km - from GPS (or some manual measurement of route length)
+        'tags', // [] will replace entire set of tags
+        'maps', // [] *** important *** will replace the entire map record, request must be complete
+      ];
+      Object.keys(req.body).forEach((key) => {
+        if (validFields.includes(key)) {
+          fieldsToUpdateRunner[key] = req.body[key];
+        }
+      });
+      // console.log('fieldsToUpdateRunner:', fieldsToUpdateRunner);
+      const numberOfFieldsToUpdate = Object.keys(fieldsToUpdateRunner).length;
+      // console.log('fields to be updated:', numberOfFieldsToUpdate);
+      if (numberOfFieldsToUpdate === 0) {
+        logger('error')('Update runner at event error: no valid fields to update.');
+        return res.status(400).send({ error: 'No valid fields to update.' });
+      }
+      return Event.findOneAndUpdate({ _id: eventid, 'runners.user': userid },
+        { $set: { 'runners.$': fieldsToUpdateRunner } },
+        { new: true })
+        .then((updatedEvent) => {
+          logger('success')(`Updated ${req.user.email} in ${updatedEvent.name} (${updatedEvent.date}) (${numberOfFieldsToUpdate} field(s)).`);
+          return res.status(200).send(updatedEvent);
+        })
+        .catch((err) => {
+          logger('error')('Error updating runner at event:', err.message);
+          return res.status(400).send({ error: err.message });
+        });
+    }
+    logger('error')(`Error: ${req.user.email} not allowed to update runner ${userid}.`);
+    return res.status(401).send({ error: 'Not allowed to update this runner.' });
+  }).catch((err) => {
+    logger('error')('Error adding runner to event:', err.message);
+    return res.status(400).send({ error: err.message });
+  });
 };
 
 // update the specified link between events (multiple amendment not supported)
@@ -647,7 +791,7 @@ const updateEventLink = (req, res) => {
       return res.status(404).send({ error: 'Event link could not be found.' });
     }
     const currentIncludes = linkedEventToUpdate.includes.map(el => el.toString());
-    console.log('includes before editing:', currentIncludes);
+    // console.log('includes before editing:', currentIncludes);
     const fieldsToUpdate = {};
     if (req.body.displayName && req.body.displayName !== linkedEventToUpdate.displayName) {
       fieldsToUpdate.displayName = req.body.displayName;
@@ -660,10 +804,10 @@ const updateEventLink = (req, res) => {
       const newIncludes = (eventIds)
         ? eventIds.map(el => el.toString())
         : linkedEventToUpdate.includes;
-      console.log('eventIds to be new includes:', newIncludes);
+      // console.log('eventIds to be new includes:', newIncludes);
       const addedEventIds = newIncludes.filter(eventId => !currentIncludes.includes(eventId));
       const removedEventIds = currentIncludes.filter(eventId => !newIncludes.includes(eventId));
-      console.log('added, removed:', addedEventIds, removedEventIds);
+      // console.log('added, removed:', addedEventIds, removedEventIds);
       const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
       if (numberOfFieldsToUpdate === 0) {
         logger('error')('Update event link error: no valid fields to update.');
@@ -779,7 +923,7 @@ const deleteEventLink = (req, res) => {
       }
       return LinkedEvent.deleteOne({ _id: eventlinkid }).then((deletion) => {
         if (deletion.deletedCount === 1) {
-          Event.updateMany({ _id: { $in: (linkedEventToDelete.includes || []) } },
+          return Event.updateMany({ _id: { $in: (linkedEventToDelete.includes || []) } },
             { $pull: { linkedTo: linkedEventToDelete._id } })
             .then(() => {
               logger('success')(`Successfully deleted event link ${linkedEventToDelete._id} (${linkedEventToDelete.displayName})`);

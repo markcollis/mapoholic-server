@@ -67,6 +67,7 @@ module.exports = (app) => {
   // *** DONE ***
   // add user as a runner at the specified event (event.runners[] fields except maps)
   app.post('/events/:eventid/maps', requireAuth, Events.addEventRunner);
+  // *** DONE ***
   // upload a scanned map to the specified event map document (maptitle for differentiation)
   // :mapid is the index in runners.maps, :maptype is either course or route
   // :maptitle is the label to use for each part of multi-part maps
@@ -108,6 +109,7 @@ module.exports = (app) => {
   // *** DONE ***
   // update the specified runner and map data (multiple amendment not supported)
   app.patch('/events/:eventid/maps/:userid', requireAuth, Events.updateEventRunner);
+  // *** DONE ***
   // update the specified link between events (multiple amendment not supported)
   app.patch('/events/links/:eventlinkid', requireAuth, Events.updateEventLink);
   // *** DONE ***
@@ -125,6 +127,7 @@ module.exports = (app) => {
   // removal approach will be through editing the event to remove it from the linked set
   // *hence this route will be constrained to admin users only*
   app.delete('/events/links/:eventlinkid', requireAuth, Events.deleteEventLink);
+  // *** DONE ***
   // delete the specified comment (multiple amendment not supported)
   app.delete('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.deleteComment);
 
