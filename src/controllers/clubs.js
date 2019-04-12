@@ -72,10 +72,12 @@ const createClub = (req, res) => {
     // console.log('fieldsToCreate:', fieldsToCreate);
     const newClub = new Club(fieldsToCreate);
     newClub.save()
-      .then(() => {
-        // console.log('newClub', newClub);
-        logger('success')(`${newClub.shortName} created by ${req.user.email}.`);
-        return res.status(200).send(newClub);
+      .then((createdClub) => {
+        return createdClub.populate('owner', '_id displayName').execPopulate();
+      })
+      .then((createdClub) => {
+        logger('success')(`${createdClub.shortName} created by ${req.user.email}.`);
+        return res.status(200).send(createdClub);
       })
       .catch((err) => {
         if (err.message.slice(0, 6) === 'E11000') {
@@ -218,6 +220,8 @@ const updateClub = (req, res) => {
             return res.status(400).send({ error: 'No valid fields to update.' });
           }
           return Club.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+            .populate('owner', '_id displayName')
+            .select('-active -__v')
             .then((updatedClub) => {
               logger('success')(`${updatedClub.shortName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
               return res.status(200).send(updatedClub);

@@ -68,21 +68,25 @@ module.exports = (app) => {
   // add user as a runner at the specified event (event.runners[] fields except maps)
   app.post('/events/:eventid/maps', requireAuth, Events.addEventRunner);
   // *** DONE ***
-  // upload a scanned map to the specified event map document (maptitle for differentiation)
-  // :mapid is the index in runners.maps, :maptype is either course or route
-  // :maptitle is the label to use for each part of multi-part maps
-  app.post('/events/:eventid/maps/:mapid/:maptype(course|route)/:maptitle', requireAuth,
+  // upload a scanned map to the specified event for user :userid
+  // :maptype is either course or route
+  // :maptitle is the label to use for each part of multi-part maps (optional, default 'map')
+  app.post('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle?', requireAuth,
     Events.validateMapUploadPermission, images.uploadMap.single('upload'),
     Events.postMap, images.errorHandler);
+  // *** DONE including extracting geo data from QR ***
   // Post a new comment against the specified user's map in this event
   app.post('/events/:eventid/comments/:userid', requireAuth, Events.postComment);
+
   // create a new event using oris data *eventid is ORIS event id*
   // if a corresponding event is already in db, fill empty fields only
   // create runner fields for logged in user if found in ORIS (i.e. can use to add user to event)
-  app.post('/events/oris/event/:oriseventid', requireAuth, Events.orisCreateEvent);
+  app.post('/events/oris/:oriseventid', requireAuth, Events.orisCreateEvent);
   // *** DONE EXCEPT HANDLING MULTI-DAY EVENTS ***
   // create a set of new events and auto-populate them based on the user's ORIS history
   app.post('/events/oris/user/:userid', requireAuth, Events.orisCreateUserEvents);
+  // NOT DONE - CONSIDER WHETHER THIS IS REALLY A GOOD IDEA...
+
 
   // retrieve a list of all events (ids) matching specified criteria
   // [may include events without *maps* visible to current user, include number
@@ -95,6 +99,11 @@ module.exports = (app) => {
   // retrieve a list of links between events matching specified criteria
   // no need for a get with ID, full contents provided (name and linked events)
   app.get('/events/links', publicRoute, Events.getEventLinks);
+  // *** DONE ***
+  // retrieve a list of all events on ORIS that the current user has entered
+  // assumption is that front end will use this to provide a list to select from
+  // before calling POST /events/oris/:oriseventid
+  app.get('/events/oris', requireAuth, Events.orisGetUserEvents);
   // *** DONE ***
   // retrieve full details for the specified event
   // [including visible maps and basic info for linked events]
@@ -116,19 +125,24 @@ module.exports = (app) => {
   // edit the specified comment (multiple amendment not supported)
   app.patch('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.updateComment);
 
+
   // delete the specified event (multiple delete not supported)
   // [will fail if other users have records attached to event, unless admin]
   app.delete('/events/:eventid', requireAuth, Events.deleteEvent);
   // *** DONE ***
-  // delete the specified runner and map data (multiple amendment not supported)
+  // delete the specified runner and map data (multiple deletion not supported)
   app.delete('/events/:eventid/maps/:userid', requireAuth, Events.deleteEventRunner);
-  // delete the specified link between events (multiple amendment not supported)
+
+  // delete the specified map (multiple deletion not supported)
+  app.delete('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle?', requireAuth, Events.deleteMap);
+  // *** DONE ***
+  // delete the specified link between events (multiple deletion not supported)
   // NOTE: not expected to be used except for administrative tidying - the normal
   // removal approach will be through editing the event to remove it from the linked set
   // *hence this route will be constrained to admin users only*
   app.delete('/events/links/:eventlinkid', requireAuth, Events.deleteEventLink);
   // *** DONE ***
-  // delete the specified comment (multiple amendment not supported)
+  // delete the specified comment (multiple deletion not supported)
   app.delete('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.deleteComment);
 
 

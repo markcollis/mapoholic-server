@@ -10,8 +10,8 @@ const clubSchema = new mongoose.Schema({
   shortName: { type: String, required: true, unique: true }, // ORIS Data.Abbr
   fullName: { type: String, trim: true, default: '' }, // ORIS Data.Name
   orisId: { type: String, trim: true, default: '' }, // CZE specific hook, ORIS Data.ID
-  country: { type: String, validate: value => validator.isISO31661Alpha3(value) },
-  website: { type: String, validate: value => validator.isURL(value) }, // ORIS Data.WWW
+  country: { type: String, validate: value => (value === '' || validator.isISO31661Alpha3(value)) },
+  website: { type: String, validate: value => (value === '' || validator.isURL(value)) }, // ORIS Data.WWW
   active: { type: Boolean, default: true }, // set to false on 'deletion', recovery by db admin only
 }, { timestamps: true });
 

@@ -3,7 +3,7 @@ const sharp = require('sharp');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
+// const url = require('url');
 const User = require('../models/user');
 require('../models/club');
 const logger = require('../utils/logger');
@@ -27,10 +27,11 @@ const findAndReturnUserList = (userSearchCriteria) => {
           user_id: profile._id,
           displayName: profile.displayName,
           fullName: profile.fullName || '',
-          email: profile.contact.email || '',
+          email: profile.email,
           memberOf: clubList,
           profileImage: profile.profileImage || '',
           role: profile.role,
+          joined: profile.createdAt,
         };
       });
     });
@@ -194,8 +195,7 @@ const updateUser = (req, res) => {
     return res.status(404).send({ error: 'Invalid ID.' });
   }
   const fieldsToUpdate = {};
-  const validFields = [ // password needs a separate hook in authentication
-    'email',
+  const validFields = [ // password needs a separate hook in authentication, possibly email too!
     'visibility',
     'displayName',
     'fullName',
@@ -204,6 +204,7 @@ const updateUser = (req, res) => {
     'about',
     'contact',
     'memberOf',
+    'email',
   ];
   Object.keys(req.body).forEach((key) => {
     // console.log('filtering on', key, req.query[key]);
@@ -299,7 +300,7 @@ const deleteUser = (req, res) => {
         .concat('@')
         .concat((`0${now.getHours()}`).slice(-2))
         .concat((`0${now.getMinutes()}`).slice(-2));
-      const newEmail = `${userToDelete.email} ${deletedAt}`;
+      const newEmail = `deleted${now.getTime()}${userToDelete.email}`;
       const newDisplayName = `${userToDelete.displayName} ${deletedAt}`;
       return User.findByIdAndUpdate(id,
         { $set: { active: false, email: newEmail, displayName: newDisplayName } },
@@ -346,25 +347,31 @@ const postProfileImage = (req, res) => {
   // alt - simple move from upload to avatars
   // return fs.rename(req.file.path, newFileLocation, (renameErr) => {
   //   if (renameErr) throw renameErr;
-  return sharp(req.file.path).resize(200, 200).toFile(newFileLocation, (err) => {
-    if (err) throw err;
-    const profileImageUrl = url.format({
-      protocol: req.protocol,
-      host: req.get('host'),
-      pathname: newFileLocation,
+  return fs.unlink(newFileLocation, () => {
+    // console.log('previous file deleted!');
+    //   return fs.rename(req.file.path, newFileLocation, (err) => {
+    //    sharp(newFileLocation).resize(200, 200).toFile(newFileLocation.concat('.temp'));
+    return sharp(req.file.path).resize(200, 200).toFile(newFileLocation, (err) => {
+      sharp.cache(false); // stops really confusing behaviour if changing more than once!
+      if (err) throw err;
+      // const profileImageUrl = url.format({
+      //   protocol: req.protocol,
+      //   host: req.get('host'),
+      //   pathname: newFileLocation,
+      // });
+      return User.findByIdAndUpdate(req.params.id,
+        { $set: { profileImage: newFileLocation } },
+        { new: true })
+        .select('-password')
+        .then((updatedUser) => {
+          // console.log('updatedUser', updatedUser);
+          logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
+          return res.status(200).send(updatedUser.profileImage);
+        }).catch((saveUrlErr) => {
+          logger('error')('Error recording new profile image URL:', saveUrlErr.message);
+          return res.status(400).send({ error: saveUrlErr.message });
+        });
     });
-    return User.findByIdAndUpdate(req.params.id,
-      { $set: { profileImage: profileImageUrl } },
-      { new: true })
-      .select('-password')
-      .then((updatedUser) => {
-        // console.log('updatedUser', updatedUser);
-        logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
-        return res.status(200).send({ profileImageUrl });
-      }).catch((saveUrlErr) => {
-        logger('error')('Error recording new profile image URL:', saveUrlErr.message);
-        return res.status(400).send({ error: saveUrlErr.message });
-      });
   });
 };
 

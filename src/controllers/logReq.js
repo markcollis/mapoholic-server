@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 
 const ENABLE = true; // turn on/off completely
 
+
 module.exports = (req) => {
   if (ENABLE) {
     logger('separator')(req.method, req.url, JSON.stringify(req.route.path));

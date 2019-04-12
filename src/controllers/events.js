@@ -1,8 +1,9 @@
 const { ObjectID } = require('mongodb');
-// const sharp = require('sharp');
+const sharp = require('sharp');
 const fetch = require('node-fetch');
-// const fs = require('fs');
-// const path = require('path');
+const fs = require('fs');
+const path = require('path');
+const { getQRData, calculateDistance, projectPoint } = require('../utils/parseQR');
 // const url = require('url');
 // const User = require('../models/user');
 const Club = require('../models/club');
@@ -46,7 +47,7 @@ const createEvent = (req, res) => {
       return res.status(400).send({ error: `Error creating event: The event ${eventName} on ${eventDate} already exists.` });
     }
     const fieldsToCreate = { owner: creatorId };
-    const validFields = [ // owner is creator, orisId is only used by oris-specific routes
+    const validFields = [ // owner is creator
       'date',
       'name',
       'mapName',
@@ -55,6 +56,7 @@ const createEvent = (req, res) => {
       'locCountry',
       'locLat',
       'locLong',
+      'orisId',
       'types', // []
       'tags', // []
       'website',
@@ -220,15 +222,288 @@ const postComment = (req, res) => {
   logReq(req);
   res.send('not done yet');
 };
-// upload a scanned map to the specified event map document (maptitle for differentiation)
-// :mapid is the index in runners.maps, :maptype is either course or route
-// :maptitle is the label to use for each part of multi-part maps
+
+// upload a scanned map to the specified event for user :userid
+// :maptype is either course or route
+// :maptitle is the label to use for each part of multi-part maps (default: 'map')
+// app.post('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle'
 const validateMapUploadPermission = (req, res, next) => {
-  next();
+  const allowedToUploadMap = ((req.user.role === 'admin')
+  || (req.user.role === 'standard' && req.user._id.toString() === req.params.userid));
+  if (!allowedToUploadMap) {
+    logger('error')(`Error: ${req.user.email} not allowed to upload map for ${req.params.userid}.`);
+    return res.status(401).send({ error: 'Not allowed to upload map for this user.' });
+  }
+  return next();
 };
 const postMap = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  if (!req.file) {
+    logger('error')('Error: postMap request without image attached.');
+    return res.status(400).send({ error: 'No map image file attached.' });
+  }
+  const {
+    eventid,
+    userid,
+    maptype,
+    maptitle,
+  } = req.params;
+  const title = maptitle || 'map';
+  // check that event and user ids are appropriate format
+  if (!ObjectID.isValid(eventid) || !ObjectID.isValid(userid)) {
+    logger('error')('Error uploading map: invalid ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  const newFileLocation = path.join('images', 'maps', eventid, req.file.path.split('/').pop());
+  // first make sure that the eventid folder exists
+  return fs.mkdir(path.join('images', 'maps', eventid), (mkdirErr) => {
+    if (mkdirErr && mkdirErr.code !== 'EEXIST') throw mkdirErr;
+    fs.rename(req.file.path, newFileLocation, (renameErr) => {
+      if (renameErr) throw renameErr;
+      fs.readFile(newFileLocation, (err, data) => {
+        if (err) throw err;
+        // create thumbnail and extract
+        const thumbnailSize = 200; // fit within square box of this dimension in pixels
+        const extractWidth = 600; // pixels
+        const extractHeight = 100; // pixels
+        const thumbnail = newFileLocation.slice(0, -4).concat('-thumb').concat(newFileLocation.slice(-4));
+        const extract = newFileLocation.slice(0, -4).concat('-extract').concat(newFileLocation.slice(-4));
+        sharp(newFileLocation)
+          .resize(thumbnailSize, thumbnailSize, { fit: 'inside' })
+          .toFile(thumbnail, (thumbErr) => {
+            if (thumbErr) throw err;
+          });
+        sharp(newFileLocation)
+          .metadata()
+          .then((metadata) => {
+            const centreX = Math.round(metadata.width / 2);
+            const centreY = Math.round(metadata.height / 2);
+            return sharp(newFileLocation)
+              .extract({
+                left: centreX - (extractWidth / 2),
+                top: centreY - (extractHeight / 2),
+                width: extractWidth,
+                height: extractHeight,
+              })
+              .toFile(extract, (extractErr) => {
+                if (extractErr) throw err;
+              });
+          });
+        // const toPrint = data.toString('hex').match(/../g).join(' ').slice(0, 512);
+        // console.log(toPrint);
+        // const parsedQR = quickRouteParser.parse(data);
+        // console.log(JSON.stringify(parsedQR, null, 2));
+        const qRData = getQRData(data);
+        let trackCoords = [];
+        let trackDistance = 0;
+        if (qRData.sessions) { // assume first session, first route for now
+          trackCoords = qRData.sessions.sessionData[0].route[0].waypoints;
+          trackDistance = calculateDistance(trackCoords[0], trackCoords[1]);
+          for (let i = 0; i < trackCoords.length - 2; i += 1) {
+            trackDistance += calculateDistance(trackCoords[i], trackCoords[i + 1]);
+          }
+          // const origin = qRData.sessions.sessionData[0].projectionOrigin;
+          // const matrix0 = qRData.sessions.sessionData[0].handles[0].transformationMatrix;
+          // const matrix1 = qRData.sessions.sessionData[0].handles[1].transformationMatrix;
+          // const matrix2 = qRData.sessions.sessionData[0].handles[2].transformationMatrix;
+          // const matrix3 = qRData.sessions.sessionData[0].handles[3].transformationMatrix;
+          // const offsetX = qRData.locationSizePixels.x;
+          // const offsetY = qRData.locationSizePixels.y;
+          // console.log('origin:', origin);
+          // console.log('matrix0:', matrix0);
+          // console.log('matrix1:', matrix1);
+          // console.log('matrix2:', matrix2);
+          // console.log('matrix3:', matrix3);
+          // for (let j = 0; j < 576; j += 25) {
+          //   console.log('track point:', j, trackCoords[j]);
+          //   const projectedPoint = projectPoint(origin, trackCoords[j]);
+          //   console.log('projected point:', projectedPoint);
+          //   const transformedPoint0 = projectPoint(origin, trackCoords[j], matrix0);
+          //   const transformedPoint1 = projectPoint(origin, trackCoords[j], matrix1);
+          //   const transformedPoint2 = projectPoint(origin, trackCoords[j], matrix2);
+          //   const transformedPoint3 = projectPoint(origin, trackCoords[j], matrix3);
+          //   // console.log('transformed point0:', transformedPoint);
+          //   const offsetPoint0 = [transformedPoint0[0] + offsetX, transformedPoint0[1] + offsetY];
+          //   console.log('offset point 0:', offsetPoint0);
+          //   const offsetPoint1 = [transformedPoint1[0] + offsetX, transformedPoint1[1] + offsetY];
+          //   console.log('offset point 1:', offsetPoint1);
+          //   const offsetPoint2 = [transformedPoint2[0] + offsetX, transformedPoint2[1] + offsetY];
+          //   console.log('offset point 2:', offsetPoint2);
+          //   const offsetPoint3 = [transformedPoint3[0] + offsetX, transformedPoint3[1] + offsetY];
+          //   console.log('offset point 3:', offsetPoint3);
+          // }
+          // const { mapCorners } = qRData;
+          // console.log('nw corner', mapCorners.nw.lat, mapCorners.nw.long);
+          // console.log('maps to', projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long]));
+          // const transformedPoint0 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix0);
+          // const transformedPoint1 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix1);
+          // const transformedPoint2 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix2);
+          // const transformedPoint3 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix3);
+          // const offsetPoint0 = [transformedPoint0[0] + offsetX, transformedPoint0[1] + offsetY];
+          // console.log('offset point 0:', offsetPoint0);
+          // const offsetPoint1 = [transformedPoint1[0] + offsetX, transformedPoint1[1] + offsetY];
+          // console.log('offset point 1:', offsetPoint1);
+          // const offsetPoint2 = [transformedPoint2[0] + offsetX, transformedPoint2[1] + offsetY];
+          // console.log('offset point 2:', offsetPoint2);
+          // const offsetPoint3 = [transformedPoint3[0] + offsetX, transformedPoint3[1] + offsetY];
+          // console.log('offset point 3:', offsetPoint3);
+          // console.log('se corner', mapCorners.se.lat, mapCorners.se.long);
+          // console.log('maps to', projectPoint(origin, [mapCorners.se.lat, mapCorners.se.long]));
+          // console.log('origin', origin);
+          // console.log('maps to', projectPoint(origin, origin));
+          // console.log('trackCoords:', trackCoords);
+          // console.log('trackDistance:', trackDistance);
+        }
+        const trackDistanceK = Math.floor(trackDistance) / 1000;
+        // console.log(JSON.stringify(qRData, null, 2));
+        return Event.findById(eventid)
+          .then((foundEvent) => {
+            const newEvent = foundEvent;
+            let runnerExists = false;
+            const newRunners = foundEvent.runners.map((runner) => {
+              if (runner.user.toString() === userid) {
+                runnerExists = true;
+                let mapExists = false;
+                runner.maps.map((map) => {
+                  const newMap = map;
+                  if (newMap.title === title) {
+                    mapExists = true;
+                    newMap[maptype] = newFileLocation;
+                    if (qRData.isGeocoded) {
+                      newMap.isGeocoded = true;
+                      newMap.geo = {
+                        mapCentre: qRData.mapCentre,
+                        mapCorners: qRData.mapCorners,
+                        imageCorners: qRData.imageCorners,
+                        locationSizePixels: qRData.locationSizePixels,
+                        track: trackCoords,
+                        distanceRun: trackDistanceK,
+                      };
+                    }
+                  }
+                  return newMap;
+                });
+                if (!mapExists) {
+                  const mapToAdd = {
+                    title,
+                    [maptype]: newFileLocation,
+                  };
+                  if (qRData.isGeocoded) {
+                    mapToAdd.isGeocoded = true;
+                    mapToAdd.geo = {
+                      mapCentre: qRData.mapCentre,
+                      mapCorners: qRData.mapCorners,
+                      imageCorners: qRData.imageCorners,
+                      locationSizePixels: qRData.locationSizePixels,
+                      track: trackCoords,
+                      distanceRun: trackDistanceK,
+                    };
+                  }
+                  runner.maps.push(mapToAdd);
+                }
+              }
+              return runner;
+            });
+            if (!runnerExists) {
+              const runnerToAdd = {
+                user: userid,
+                maps: {
+                  title,
+                  [maptype]: newFileLocation,
+                },
+              };
+              if (qRData.isGeocoded) {
+                runnerToAdd.maps.isGeocoded = true;
+                runnerToAdd.maps.geo = {
+                  mapCentre: qRData.mapCentre,
+                  mapCorners: qRData.mapCorners,
+                  imageCorners: qRData.imageCorners,
+                  locationSizePixels: qRData.locationSizePixels,
+                  track: trackCoords,
+                  distanceRun: trackDistanceK,
+                };
+              }
+              newRunners.push(runnerToAdd);
+            }
+            // console.log('runners:', foundEvent.runners);
+            // console.log('newRunners:', newRunners);
+            newEvent.runners = newRunners;
+            return newEvent.save();
+          })
+          .then((updatedEvent) => {
+            // console.log('updatedEvent:', updatedEvent);
+            logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
+            return res.status(200).send(updatedEvent);
+          }).catch((updateEventErr) => {
+            logger('error')('Error recording updated map references:', updateEventErr.message);
+            return res.status(400).send({ error: updateEventErr.message });
+          });
+      });
+    });
+  });
+};
+
+// delete the specified map (multiple deletion not supported)
+// app.delete('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle?'
+const deleteMap = (req, res) => {
+  logReq(req);
+  const allowedToDeleteMap = ((req.user.role === 'admin')
+  || (req.user.role === 'standard' && req.user._id.toString() === req.params.userid));
+  if (!allowedToDeleteMap) {
+    logger('error')(`Error: ${req.user.email} not allowed to delete map for ${req.params.userid}.`);
+    return res.status(401).send({ error: 'Not allowed to delete map for this user.' });
+  }
+  const {
+    eventid,
+    userid,
+    maptype,
+    maptitle,
+  } = req.params;
+  const title = maptitle || 'map';
+  // check that event and user ids are appropriate format
+  if (!ObjectID.isValid(eventid) || !ObjectID.isValid(userid)) {
+    logger('error')('Error deleting map: invalid ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  return Event.findById(eventid)
+    .then((foundEvent) => {
+      const newEvent = foundEvent;
+      let runnerExists = false;
+      const newRunners = foundEvent.runners.map((runner) => {
+        if (runner.user.toString() === userid) {
+          runnerExists = true;
+          let mapExists = false;
+          runner.maps.map((map) => {
+            const newMap = map;
+            if (newMap.title === title) {
+              mapExists = true;
+              newMap[maptype] = '';
+              newMap.isGeocoded = false;
+              newMap.geo = {};
+            }
+            return newMap;
+          });
+          if (!mapExists) {
+            logger('error')('Error deleting map: Map does not exist');
+            return res.status(400).send({ error: 'Map does not exist.' });
+          }
+        }
+        return runner;
+      });
+      if (!runnerExists) {
+        logger('error')('Error deleting map: Runner does not exist');
+        return res.status(400).send({ error: 'Runner does not exist.' });
+      }
+      newEvent.runners = newRunners;
+      return newEvent.save();
+    })
+    .then((updatedEvent) => {
+      logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
+      return res.status(200).send(updatedEvent);
+    }).catch((updateEventErr) => {
+      logger('error')('Error deleting map:', updateEventErr.message);
+      return res.status(400).send({ error: updateEventErr.message });
+    });
 };
 
 // create a new event using oris data *eventid is ORIS event id*
@@ -353,10 +628,85 @@ const orisCreateEvent = (req, res) => {
 // create a set of new events and auto-populate them based on the user's ORIS history
 const orisCreateUserEvents = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  res.status(400).send('Not yet implemented');
 };
+// it may be unwise to ever implement this due to the volume of data this could populate
+// automatically. See orisGetUserEvents for accessing a list of candidate ORIS events to add
 
 // GET routes
+// return a list of summary details of all events in ORIS associated with the current user
+const orisGetUserEvents = (req, res) => {
+  logReq(req);
+  if (!req.user.orisId) {
+    logger('error')(`Error: No ORIS userid identified for ${req.user.email}.`);
+    return res.status(400).send({ error: 'You do not have an associated ORIS userid' });
+  }
+  let dateFilter = ''; // supports passthrough of date filtering, front end default could be 1yr?
+  if (req.query.datefrom) {
+    if (req.query.datefrom.match(/[1|2][0-9]{3}-((0[13578]|1[02])-(0[1-9]|[12][0-9]|3[01])|(0[469]|11)-(0[1-9]|[12][0-9]|30)|02-(0[1-9]|[12][0-9]))/)) {
+      dateFilter = dateFilter.concat(`&datefrom=${req.query.datefrom}`);
+    } // note: basic input validation, doesn't check for leap years so 2019-02-29 would pass
+  }
+  if (req.query.dateto) {
+    if (req.query.dateto.match(/[1|2][0-9]{3}-((0[13578]|1[02])-(0[1-9]|[12][0-9]|3[01])|(0[469]|11)-(0[1-9]|[12][0-9]|30)|02-(0[1-9]|[12][0-9]))/)) {
+      dateFilter = dateFilter.concat(`&dateto=${req.query.dateto}`);
+    } // note: basic input validation, doesn't check for leap years so 2019-02-29 would pass
+  }
+  // console.log('dateFilter:', dateFilter);
+  const ORIS_API_GETUSEREVENTENTRIES = 'https://oris.orientacnisporty.cz/API/?format=json&method=getUserEventEntries';
+  return fetch(`${ORIS_API_GETUSEREVENTENTRIES}&userid=${req.user.orisId}${dateFilter}`)
+    .then(response => response.json())
+    .then((orisEventList) => {
+      const eventsEntered = Object.keys(orisEventList.Data).map((entry) => {
+        const eventDetails = {
+          orisEntryId: orisEventList.Data[entry].ID,
+          orisClassId: orisEventList.Data[entry].ClassID,
+          orisEventId: orisEventList.Data[entry].EventID,
+          date: orisEventList.Data[entry].EventDate,
+          class: orisEventList.Data[entry].ClassDesc,
+        };
+        return eventDetails;
+      });
+      const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
+      const expandOrisDetails = eventsEntered.map((eachEvent) => {
+        return fetch(`${ORIS_API_GETEVENT}&id=${eachEvent.orisEventId}`)
+          .then(response => response.json())
+          .then((orisEvent) => {
+            const eventData = {
+              orisEventId: orisEvent.Data.ID,
+              date: orisEvent.Data.Date,
+              name: orisEvent.Data.Name,
+              place: orisEvent.Data.Place,
+              organiser: orisEvent.Data.Org1.Abbr,
+            };
+            if (orisEvent.Data.Stages !== '0') {
+              const includedEvents = [orisEvent.Data.Stage1, orisEvent.Data.Stage2,
+                orisEvent.Data.Stage3, orisEvent.Data.Stage4, orisEvent.Data.Stage5,
+                orisEvent.Data.Stage6, orisEvent.Data.Stage7];
+              eventData.includedEvents = includedEvents.filter(el => el !== '0');
+            }
+            return eventData;
+          });
+      });
+      Promise.all(expandOrisDetails).then((details) => {
+        // console.log('details', details);
+        for (let i = 0; i < eventsEntered.length; i += 1) {
+          eventsEntered[i].name = details[i].name;
+          eventsEntered[i].place = details[i].place;
+          if (details[i].includedEvents) {
+            eventsEntered[i].includedEvents = details[i].includedEvents;
+          }
+        }
+        logger('success')(`Returned list of ${eventsEntered.length} event(s) entered by ${req.user.email} (${req.user.orisId}).`);
+        res.status(200).send(eventsEntered);
+      });
+    })
+    .catch((orisErr) => {
+      logger('error')(`ORIS API error: ${orisErr.message}.`);
+      return res.status(400).send({ error: orisErr.message });
+    });
+};
+
 // retrieve a list of all events matching specified criteria
 // [may include events without *maps* visible to current user, include number
 // of (visible) maps in returned list]
@@ -383,7 +733,11 @@ const getEventList = (req, res) => {
     if (validIdFilters.includes(key)) {
       // needs custom treatment to avoid ObjectID cast error/return empty array if no such owner
       if (ObjectID.isValid(req.query[key])) {
-        eventSearchCriteria.req.query[key] = req.query[key];
+        if (key === 'runners') {
+          eventSearchCriteria.runners = { $elemMatch: { user: req.query.runners } };
+        } else {
+          eventSearchCriteria[key] = req.query[key];
+        }
       }
     }
   });
@@ -409,7 +763,7 @@ const getEventList = (req, res) => {
     .populate('runners.user', '_id displayName memberOf')
     .select('-active -__v')
     .then((events) => {
-      // process to reduce level of detail and exclude non-visibile runners
+      // process to reduce level of detail and exclude non-visible runners
       const eventsSummary = events.map((foundEvent) => {
         const eventDetails = {
           _id: foundEvent._id,
@@ -423,6 +777,9 @@ const getEventList = (req, res) => {
           locLong: foundEvent.locLong,
           organisedBy: foundEvent.organisedBy,
           linkedTo: foundEvent.linkedTo,
+          totalRunners: foundEvent.runners.length || 0,
+          types: foundEvent.types,
+          tags: foundEvent.tags,
         };
         if (foundEvent.runners.length > 0) {
           const selectedRunners = foundEvent.runners.map((runner) => {
@@ -754,6 +1111,7 @@ const updateEventRunner = (req, res) => {
       }
       return Event.findOneAndUpdate({ _id: eventid, 'runners.user': userid },
         { $set: { 'runners.$': fieldsToUpdateRunner } },
+        // { $pull: { runners: { user: userid } } },  // to delete instead of update - use below
         { new: true })
         .then((updatedEvent) => {
           logger('success')(`Updated ${req.user.email} in ${updatedEvent.name} (${updatedEvent.date}) (${numberOfFieldsToUpdate} field(s)).`);
@@ -767,7 +1125,7 @@ const updateEventRunner = (req, res) => {
     logger('error')(`Error: ${req.user.email} not allowed to update runner ${userid}.`);
     return res.status(401).send({ error: 'Not allowed to update this runner.' });
   }).catch((err) => {
-    logger('error')('Error adding runner to event:', err.message);
+    logger('error')('Error updating runner at event:', err.message);
     return res.status(400).send({ error: err.message });
   });
 };
@@ -950,7 +1308,6 @@ const deleteComment = (req, res) => {
   res.send('not done yet');
 };
 
-
 module.exports = {
   createEvent,
   createEventLink,
@@ -960,6 +1317,7 @@ module.exports = {
   postMap,
   orisCreateEvent,
   orisCreateUserEvents,
+  orisGetUserEvents,
   getEventList,
   getEventLinks,
   getEvent,
@@ -970,5 +1328,6 @@ module.exports = {
   deleteEvent,
   deleteEventLink,
   deleteEventRunner,
+  deleteMap,
   deleteComment,
 };

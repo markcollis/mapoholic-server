@@ -102,17 +102,19 @@ const oeventSchema = new mongoose.Schema({
     place: { type: String, trim: true }, // Data.Result_nnnn.Place
     timeBehind: { type: String, trim: true }, // Data.Result_nnnn.Loss
     fieldSize: { type: String, trim: true }, // can work out from ORIS result set length
-    distanceRun: { type: String, trim: true }, // actual km - from GPS perhaps?
     tags: [{ type: String, trim: true }], // user-defined tags associated with map rather than event
-    maps: [{ // one or more set, referred to by index
+    maps: [{ // one or more set, referred to by title
       title: { type: String, trim: true, default: 'map' }, // label e.g. 'part 1'
       course: { type: String, trim: true }, // URL for course map
       route: { type: String, trim: true }, // URL for course map with route marked
       // thumbnail and extract are auto-generated each time another map is uploaded
-      thumbnail: { type: String, trim: true }, // URL for thumbnail of whole map (200 x 200)
-      extract: { type: String, trim: true }, // URL for map extract (600 x 200?)
+      // shouldn't need their own field, just append '-thumb' or '-extract' to course/route!
+      // thumbnail: { type: String, trim: true }, // URL for thumbnail of whole map (200 x 200)
+      // extract: { type: String, trim: true }, // URL for map extract (600 x 200?)
       isGeocoded: { type: Boolean, default: false }, // i.e. is there anything to find in 'geo'
       geo: { // information to be extracted from QR jpg on upload; only centre/corners set manually
+        track: { type: Array }, // array of [lat, long] points *not easy to validate array format*
+        distanceRun: { type: String, trim: true }, // actual km - from GPS track
         mapCentre: {
           lat: { type: Number, min: -90, max: 90 },
           long: { type: Number, min: -180, max: 180 },

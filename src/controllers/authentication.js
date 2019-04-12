@@ -18,8 +18,7 @@ const login = (req, res) => {
 
 const signup = (req, res, next) => {
   logReq(req); // WARNING - shows password as plain text
-  const { email, password } = req.body;
-  const displayName = req.body.displayName || req.body.email;
+  const { email, password, displayName } = req.body;
   if (!email || !password) {
     logger('error')('Signup error: either email address or password missing.');
     return res.status(400).send({ error: 'You must provide both an email address and a password.' });
@@ -28,8 +27,12 @@ const signup = (req, res, next) => {
     logger('error')(`Signup error: password for ${email} is too short.`);
     return res.status(400).send({ error: 'Your password must be at least 8 characters long.' });
   }
+  // default if no display name explicitly provided
+  const displayNameToAdd = (!displayName || displayName === '') ? email : displayName;
   // does a user with the given email or displayName exist?
-  return User.findOne({ $or: [{ email }, { displayName }] }, (err, existingUser) => {
+  return User.findOne({
+    $or: [{ email }, { displayName: displayNameToAdd }],
+  }, (err, existingUser) => {
     // handle database error
     if (err) return next(err);
     // if one does, return an error
@@ -38,11 +41,11 @@ const signup = (req, res, next) => {
         logger('error')(`Signup error: ${email} is already registered.`);
         return res.status(400).send({ error: 'This email address is already registered.' });
       }
-      logger('error')(`Signup error: ${displayName} is already in use.`);
+      logger('error')(`Signup error: ${displayNameToAdd} is already in use.`);
       return res.status(400).send({ error: 'This display name is already in use, please choose another.' });
     }
     // if not, create the user
-    const newUser = new User({ email, password, displayName });
+    const newUser = new User({ email, password, displayName: displayNameToAdd });
     return newUser.save((saveUserErr, savedUser) => {
       if (saveUserErr) return next(saveUserErr);
       // return token if successful

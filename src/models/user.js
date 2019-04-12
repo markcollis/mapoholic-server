@@ -32,12 +32,6 @@ const userSchema = new mongoose.Schema({
   orisId: { type: String, trim: true, default: '' }, // CZE specific hook for ORIS API
   location: { type: String, trim: true, default: '' },
   about: { type: String, trim: true, default: '' },
-  contact: { // can flesh out with others if desired later - none are required
-    email: { type: String, trim: true, validate: value => validator.isEmail(value) },
-    // not necessarily the same as the ACCOUNT email, UI needs to be clear on this
-    facebook: { type: String, trim: true },
-    twitter: { type: String, trim: true },
-  },
   memberOf: [{ type: mongoose.Schema.Types.ObjectId, ref: 'club' }],
   profileImage: { type: String, default: '' }, // reference to file in /uploads/user/user_id/profile.jpg
   active: { type: Boolean, default: true }, // set to false on 'deletion', recovery by db admin only

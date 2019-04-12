@@ -24,6 +24,12 @@ const mapImageStorage = multer.diskStorage({
     cb(null, 'images/upload');
   },
   filename(req, file, cb) {
+    const {
+      userid,
+      maptype,
+      maptitle,
+    } = req.params;
+    const title = maptitle || 'map';
     const fileTypes = {
       'image/png': '.png',
       'image/jpeg': '.jpg',
@@ -32,7 +38,7 @@ const mapImageStorage = multer.diskStorage({
     if (!fileTypes[file.mimetype]) {
       cb(new Error('Needs to be a JPEG or PNG image.'));
     }
-    const fileName = `${req.params.eventId}-${req.user._id}-${req.params.mapid}-${req.params.maptype}-${fileTypes[file.mimetype]}`;
+    const fileName = `${userid}-${title}-${maptype}${fileTypes[file.mimetype]}`;
     cb(null, fileName);
   },
 });

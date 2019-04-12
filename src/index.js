@@ -25,8 +25,8 @@ if (!process.env.JWT_SECRET) {
   logger('warning')('*** Warning: default JWT secret is being used ***');
   process.env.JWT_SECRET = 'insecure if environment variable not set';
 }
-const httpsKey = process.env.HTTPS_KEY || './certs/localhost-key.pem';
-const httpsCert = process.env.HTTPS_CERT || './certs/localhost.pem';
+const httpsKey = process.env.HTTPS_KEY || './certs/localhost+1-key.pem';
+const httpsCert = process.env.HTTPS_CERT || './certs/localhost+1.pem';
 
 // Database setup
 require('./utils/db');

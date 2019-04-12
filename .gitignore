@@ -3,6 +3,4 @@ node_modules/
 src/node_modules/
 src/certs/
 src/.env
-src/images/avatars/**
-src/images/upload/**
-src/images/testProfileImage.jpg
+src/images/
