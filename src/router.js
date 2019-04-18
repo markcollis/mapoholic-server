@@ -65,7 +65,7 @@ module.exports = (app) => {
   // create a new event linkage between the specified events (must be at least one event)
   app.post('/events/links', requireAuth, Events.createEventLink);
   // *** DONE ***
-  // add user as a runner at the specified event (event.runners[] fields except maps)
+  // add current user as a runner at the specified event
   app.post('/events/:eventid/maps', requireAuth, Events.addEventRunner);
   // *** DONE ***
   // upload a scanned map to the specified event for user :userid

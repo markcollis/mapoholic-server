@@ -1,4 +1,5 @@
 const { ObjectID } = require('mongodb');
+const mongoose = require('mongoose');
 const sharp = require('sharp');
 const fetch = require('node-fetch');
 const fs = require('fs');
@@ -151,7 +152,7 @@ const createEventLink = (req, res) => {
   });
 };
 
-// add user as a runner at the specified event (event.runners[] fields except maps)
+// add current user as a runner at the specified event
 const addEventRunner = (req, res) => {
   logReq(req);
   const { eventid } = req.params;
@@ -161,6 +162,7 @@ const addEventRunner = (req, res) => {
     logger('error')('Error: Guest accounts are not allowed to edit events.');
     return res.status(401).send({ error: 'Guest accounts are not allowed to edit events.' });
   }
+  const requestorClubs = req.user.memberOf.map(club => club._id.toString());
   if (!ObjectID.isValid(eventid)) {
     logger('error')('Error adding runner to event: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
@@ -204,12 +206,43 @@ const addEventRunner = (req, res) => {
     // console.log('fieldsToCreateRunner:', fieldsToCreateRunner);
     return Event.findByIdAndUpdate(eventid, { $addToSet: { runners: fieldsToCreateRunner } },
       { new: true })
+      .populate('owner', '_id displayName')
+      .populate('organisedBy', '_id shortName')
+      .populate('linkedTo', '_id displayName')
+      .populate({
+        path: 'runners.user',
+        select: '_id displayName fullName regNumber orisId profileImage visibility',
+        populate: { path: 'memberOf', select: '_id shortName' },
+      })
+      .select('-active -__v')
       .then((updatedEvent) => {
+        const filteredEvent = updatedEvent;
+        if (updatedEvent.runners.length > 0) {
+          const selectedRunners = updatedEvent.runners.map((runner) => {
+            let canSee = false;
+            if (requestorRole === 'admin') canSee = true;
+            if (runner.visibility === 'public') canSee = true;
+            if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+              if (runner.visibility === 'all') canSee = true;
+              if (requestorId === runner.user._id.toString()) canSee = true;
+              if (runner.visibility === 'club') {
+                const commonClubs = runner.user.memberOf.filter((clubId) => {
+                  return requestorClubs.includes(clubId.toString());
+                });
+                // console.log('commonClubs', commonClubs);
+                if (commonClubs.length > 0) canSee = true;
+              }
+            }
+            if (canSee) return runner;
+            return false;
+          });
+          filteredEvent.runners = selectedRunners.filter(runner => runner);
+        }
         logger('success')(`Added ${req.user.email} as runner to ${updatedEvent.name} (${updatedEvent.date}).`);
         return res.status(200).send(updatedEvent);
       })
       .catch((err) => {
-        logger('error')('Error updating event:', err.message);
+        logger('error')('Error adding runner to event:', err.message);
         return res.status(400).send({ error: err.message });
       });
   }).catch((err) => {
@@ -1010,7 +1043,7 @@ const updateEvent = (req, res) => {
               .filter(id => !newLinkedEvents.includes(id));
             // console.log('added:', addedLinkedEventIds, 'removed:', removedLinkedEventIds);
             if (ownerId) fieldsToUpdate.owner = req.body.owner;
-            // console.log('fieldsToUpdate:', fieldsToUpdate);
+            console.log('fieldsToUpdate:', fieldsToUpdate);
             const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
             // console.log('fields to be updated:', numberOfFieldsToUpdate);
             if (numberOfFieldsToUpdate === 0) {
@@ -1018,6 +1051,15 @@ const updateEvent = (req, res) => {
               return res.status(400).send({ error: 'No valid fields to update.' });
             }
             return Event.findByIdAndUpdate(eventid, { $set: fieldsToUpdate }, { new: true })
+              .populate('owner', '_id displayName')
+              .populate('organisedBy', '_id shortName')
+              .populate('linkedTo', '_id displayName')
+              .populate({
+                path: 'runners.user',
+                select: '_id displayName fullName regNumber orisId profileImage visibility',
+                populate: { path: 'memberOf', select: '_id shortName' },
+              })
+              .select('-active -__v')
               .then((updatedEvent) => {
                 // now change the Event references in relevant LinkedEvents
                 LinkedEvent.updateMany({ _id: { $in: (addedLinkedEventIds || []) } },
@@ -1175,10 +1217,10 @@ const updateEventLink = (req, res) => {
         .then((updatedLinkedEvent) => {
           // now change the linkedEvent references in relevant Events
           Event.updateMany({ _id: { $in: (addedEventIds || []) } },
-            { $addToSet: { linkedTo: updatedLinkedEvent._id } })
+            { $addToSet: { linkedTo: mongoose.Types.ObjectId(updatedLinkedEvent._id) } })
             .then(() => {
               Event.updateMany({ _id: { $in: (removedEventIds || []) } },
-                { $pull: { linkedTo: updatedLinkedEvent._id } })
+                { $pull: { linkedTo: mongoose.Types.ObjectId(updatedLinkedEvent._id) } })
                 .then(() => {
                   logger('success')(`${updatedLinkedEvent.displayName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
                   return res.status(200).send(updatedLinkedEvent);
@@ -1241,13 +1283,15 @@ const deleteEvent = (req, res) => {
         { $set: { active: false, name: newName } },
         { new: true })
         .then((deletedEvent) => {
-          // console.log('deleted linkedTo', deletedEvent.linkedTo);
+          // console.log('deletedEvent:', deletedEvent);
+          const { _id: deletedEventId, name } = deletedEvent;
           // delete any references in LinkedEvents
-          LinkedEvent.updateMany({ _id: { $in: (deletedEvent.linkedTo || []) } },
-            { $pull: { includes: deletedEvent._id } }).then(() => {
-            logger('success')(`Successfully deleted event ${deletedEvent._id} (${deletedEvent.name})`);
-            return res.status(200).send(deletedEvent);
-          });
+          LinkedEvent.updateMany({},
+            { $pull: { includes: mongoose.Types.ObjectId(deletedEventId) } })
+            .then(() => {
+              logger('success')(`Successfully deleted event ${deletedEventId} (${name})`);
+              return res.status(200).send(deletedEvent);
+            });
         })
         .catch((err) => {
           logger('error')('Error deleting event:', err.message);
@@ -1282,7 +1326,7 @@ const deleteEventLink = (req, res) => {
       return LinkedEvent.deleteOne({ _id: eventlinkid }).then((deletion) => {
         if (deletion.deletedCount === 1) {
           return Event.updateMany({ _id: { $in: (linkedEventToDelete.includes || []) } },
-            { $pull: { linkedTo: linkedEventToDelete._id } })
+            { $pull: { linkedTo: mongoose.Types.ObjectId(linkedEventToDelete._id) } })
             .then(() => {
               logger('success')(`Successfully deleted event link ${linkedEventToDelete._id} (${linkedEventToDelete.displayName})`);
               return res.status(200).send(linkedEventToDelete);

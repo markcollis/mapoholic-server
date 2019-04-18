@@ -52,15 +52,15 @@ const oeventSchema = new mongoose.Schema({
       // ORIS ET Multi-stage Etapový (flag as linkedEvent wrapper instead...)
       'Score',
       'Spanish Score',
-      'Training', // i.e. an event which isn't a _formal_ race, can have funny formats (e.g. EPO)
+      'non-standard', // i.e. either training or an event with an unusual format (e.g. some EPOs)
     ],
   }],
   tags: [{ type: String, trim: true }], // free list, not to be translated
   // auto-populate from ORIS Data.Level.NameCZ but exclude some (E, ET, S, OST, ?)
-  website: { type: String, trim: true, validate: value => validator.isURL(value) },
+  website: { type: String, trim: true, validate: value => (value === '' || validator.isURL(value)) },
   // ORIS Data.Links.Link_nnnn.Url where Link_nnnn.SourceType.ID = 13, NameCZ = Web zavodu
   // or perhaps a better default is the ORIS page for the event itself?
-  results: { type: String, trim: true, validate: value => validator.isURL(value) },
+  results: { type: String, trim: true, validate: value => (value === '' || validator.isURL(value)) },
   // not in ORIS data, format is https://oris.orientacnisporty.cz/Vysledky?id=eventid
   // but only where the full details are stored in ORIS. For other races there is an
   // uploaded PDF, found in Data.Documents.Document_nnnn.Url with SourceType.ID = 4
