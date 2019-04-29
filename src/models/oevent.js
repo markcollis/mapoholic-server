@@ -29,6 +29,8 @@ const oeventSchema = new mongoose.Schema({
   // not in ORIS but assume CZE if auto-populating from ORIS API
   locLat: { type: Number, min: -90, max: 90 }, // ORIS Data.GPSLat
   locLong: { type: Number, min: -180, max: 180 }, // ORIS Data.GPSLon
+  locCornerSW: [{ type: Number }],
+  locCornerNE: [{ type: Number }],
   // if not from ORIS, auto-populate from first geotagged map upload? or perhaps not needed?
   types: [{ // discipline labels, fixed set, need to support everything from ORIS
     // Front end will handle translation, store as English strings in db not ORIS abbreviations
@@ -88,9 +90,11 @@ const oeventSchema = new mongoose.Schema({
       // this would be nice to display under the map, but would anyone bother
       // entering manually? Possibly yes for training sessions, esp. with links to other users
       place: { type: String, trim: true }, // ORIS Place
+      sort: { type: String, trim: true }, // ORIS Sort
       name: { type: String, trim: true }, // ORIS Name
-      club: { type: String, trim: true }, // ORIS ClubNameResults
       regNumber: { type: String, trim: true }, // ORIS RegNo
+      clubShort: { type: String, trim: true }, // first three characters of RegNo
+      club: { type: String, trim: true }, // ORIS ClubNameResults
       time: { type: String, trim: true }, // ORIS Time
       loss: { type: String, trim: true }, // ORIS Loss
       // compare against the set of userIds with associated maps whenever edited?

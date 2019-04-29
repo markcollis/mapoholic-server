@@ -68,6 +68,10 @@ module.exports = (app) => {
   // add current user as a runner at the specified event
   app.post('/events/:eventid/maps', requireAuth, Events.addEventRunner);
   // *** DONE ***
+  app.post('/events/:eventid/oris', requireAuth, Events.orisAddEventRunner);
+  // *** autopopulate fields from ORIS for current user then call addEventRunner ***
+  // *** DONE ***
+
   // upload a scanned map to the specified event for user :userid
   // :maptype is either course or route
   // :maptitle is the label to use for each part of multi-part maps (optional, default 'map')

@@ -4,7 +4,8 @@ const sharp = require('sharp');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-const { getQRData, calculateDistance, projectPoint } = require('../utils/parseQR');
+// const { getQRData, calculateDistance, projectPoint } = require('../utils/parseQR');
+const { getQRData, calculateDistance } = require('../utils/parseQR');
 // const url = require('url');
 // const User = require('../models/user');
 const Club = require('../models/club');
@@ -250,6 +251,197 @@ const addEventRunner = (req, res) => {
     return res.status(400).send({ error: err.message });
   });
 };
+
+// app.post('/events/:eventid/oris', requireAuth, Events.orisAddEventRunner);
+// add current user as a new runner using ORIS data
+const orisAddEventRunner = (req, res) => {
+  logReq(req);
+  const { eventid } = req.params;
+  const requestorRole = req.user.role;
+  const requestorId = req.user._id.toString();
+  const requestorOrisId = req.user.orisId;
+  if (requestorRole === 'guest') {
+    logger('error')('Error: Guest accounts are not allowed to edit events.');
+    return res.status(401).send({ error: 'Guest accounts are not allowed to edit events.' });
+  }
+  if (!requestorOrisId || requestorOrisId === '') {
+    logger('error')('Error: You do not have an ORIS user ID.');
+    return res.status(400).send({ error: 'User does not have an ORIS ID so cannot be added as a runner.' });
+  }
+  if (!ObjectID.isValid(eventid)) {
+    logger('error')('Error adding runner to event: invalid ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  // now need to check database to identify event and runners
+  return Event.findById(eventid).then((eventToAddRunnerTo) => {
+    if (!eventToAddRunnerTo) {
+      logger('error')('Error updating event: no matching event found.');
+      return res.status(404).send({ error: 'Event could not be found.' });
+    }
+    if (!eventToAddRunnerTo.orisId || eventToAddRunnerTo.orisId === '') {
+      logger('error')('Error adding runner: event does not have ORIS ID.');
+      return res.status(400).send({ error: 'Event does not have ORIS ID.' });
+    }
+    const runnerIds = (eventToAddRunnerTo.runners.length === 0)
+      ? []
+      : eventToAddRunnerTo.runners.map(runner => runner.user.toString());
+    if (runnerIds.includes(requestorId)) {
+      logger('error')('Error adding runner to event: runner already present.');
+      return res.status(400).send({ error: 'Runner already present in event. Use PATCH to update.' });
+    }
+    const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
+    const ORIS_API_GETEVENTENTRIES = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventEntries';
+    const ORIS_API_GETEVENTRESULTS = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventResults';
+    const getOrisEventData = fetch(`${ORIS_API_GETEVENT}&id=${eventToAddRunnerTo.orisId}`)
+      .then(response => response.json());
+    const getOrisEntryData = fetch(`${ORIS_API_GETEVENTENTRIES}&eventid=${eventToAddRunnerTo.orisId}`)
+      .then(response => response.json());
+    const getOrisResultsData = fetch(`${ORIS_API_GETEVENTRESULTS}&eventid=${eventToAddRunnerTo.orisId}`)
+      .then(response => response.json());
+    return Promise.all([getOrisEventData, getOrisEntryData, getOrisResultsData])
+      .then(([orisEventData, orisEntryData, orisResultsData]) => {
+        const runnerEntryData = orisEntryData.Data[Object.keys(orisEntryData.Data)
+          .filter((entryKey) => {
+            return orisEntryData.Data[entryKey].UserID === requestorOrisId;
+          })];
+        let runnerClassData = null;
+        if (runnerEntryData && runnerEntryData.ClassID) {
+          runnerClassData = orisEventData.Data.Classes[`Class_${runnerEntryData.ClassID}`];
+        }
+        let classResultsData = null;
+        let runnerResultsData = null;
+        if (orisResultsData && orisResultsData.length > 0) {
+          classResultsData = Object.keys(orisResultsData.Data)
+            .filter((resultKey) => {
+              return orisResultsData.Data[resultKey].ClassID === runnerEntryData.ClassID;
+            })
+            .map(resultKey => orisResultsData.Data[resultKey]);
+          // const runnerResultsData = orisResultsData.Data[Object.keys(orisResultsData.Data)
+          //   .filter((resultKey) => {
+          //     return orisResultsData.Data[resultKey].UserID === requestorOrisId;
+          //   })];
+          runnerResultsData = classResultsData.find((result) => {
+            return result.UserID === requestorOrisId;
+          });
+        }
+        // console.log(runnerEntryData, runnerClassData, classResultsData, runnerResultsData);
+        req.body = { visibility: req.user.visibility };
+        if (runnerClassData) {
+          req.body.courseTitle = runnerClassData.Name;
+          req.body.courseLength = runnerClassData.Distance;
+          req.body.courseClimb = runnerClassData.Climbing;
+          req.body.courseControls = runnerClassData.Controls;
+        }
+        if (runnerResultsData) {
+          req.body.time = runnerResultsData.Time;
+          req.body.place = runnerResultsData.Place;
+          req.body.timeBehind = runnerResultsData.Loss;
+          req.body.fieldSize = classResultsData.length;
+          req.body.fullResults = classResultsData.map((runner) => {
+            return {
+              place: runner.Place,
+              sort: runner.Sort,
+              name: runner.Name,
+              regNumber: runner.RegNo,
+              clubShort: runner.RegNo.slice(0, 3),
+              club: runner.ClubNameResults,
+              time: runner.Time,
+              loss: runner.Loss,
+            };
+          });
+        }
+        // console.log('req.body:', req.body);
+        return addEventRunner(req, res);
+      })
+      .catch((orisErr) => {
+        logger('error')(`ORIS API error: ${orisErr.message}.`);
+        return res.status(400).send({ error: orisErr.message });
+      });
+  });
+  //   .then((orisEvent) => {
+  //     const eventData = orisEvent.Data;
+  //     // console.log('eventData:', eventData);
+  //
+  //
+  //   req.body = {
+  //     date: eventData.Date,
+  //     name: eventData.Name,
+  //     orisId: eventData.ID,
+  //     mapName: eventData.Map,
+  //     locPlace: eventData.Place,
+  //     locRegions: eventData.Region.split(', '),
+  //     locCountry: 'CZE',
+  //     locLat: parseFloat(eventData.GPSLat),
+  //     locLong: parseFloat(eventData.GPSLon),
+  //     types: typesToCreate,
+  //     website: `https://oris.orientacnisporty.cz/Zavod?id=${eventData.ID}`,
+  //     results: `https://oris.orientacnisporty.cz/Vysledky?id=${eventData.ID}`,
+  //     // always a valid page, whether or not there are any results stored
+  //   };
+  //   // console.log('Documents:', eventData.Documents);
+  //   // console.log('length:', eventData.Documents.length);
+  //   if (Object.keys(eventData.Documents).length > 0) {
+  //     Object.keys(eventData.Documents).forEach((documentRef) => {
+  //       // console.log('documentRef:', documentRef);
+  //       if (eventData.Documents[documentRef].SourceType.ID === '4') {
+  //         req.body.results = eventData.Documents[documentRef].Url;
+  //       }
+  //     });
+  //   }
+  //   if (!['E', 'ET', 'S', 'OST'].includes(eventData.Level.ShortName)) {
+  //     req.body.tags = [eventData.Level.NameCZ];
+  //   }
+  //   // check to see if clubs exist and, if so, get their id; otherwise create them
+  //   const firstClub = eventData.Org1.Abbr;
+  //   const secondClub = eventData.Org2.Abbr || false;
+  //   return Club.find({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
+  //     // console.log('foundClubs:', foundClubs);
+  //     const foundClubsAbbr = foundClubs.map(foundClub => foundClub.shortName);
+  //     const foundClubsIds = foundClubs.map(foundClub => foundClub._id);
+  //     // console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
+  //     const clubOneNeeded = firstClub && !foundClubsAbbr.includes(firstClub);
+  //     const clubTwoNeeded = secondClub && !foundClubsAbbr.includes(secondClub);
+  //     const checkOrisOne = (clubOneNeeded) ? getOrisClubData(firstClub) : Promise.resolve(false);
+  //     const checkOrisTwo = (clubTwoNeeded) ? getOrisClubData(secondClub)
+  //  : Promise.resolve(false);
+  //     Promise.all([checkOrisOne, checkOrisTwo]).then((orisData) => {
+  //       // console.log('orisData:', orisData);
+  //       const createClubs = orisData.map((clubData) => {
+  //         if (!clubData) return Promise.resolve(false);
+  //         // console.log('clubData:', clubData);
+  //         const fieldsToCreate = {
+  //           owner: req.user._id,
+  //           shortName: clubData.Abbr,
+  //           fullName: clubData.Name,
+  //           orisId: clubData.ID,
+  //           country: 'CZE',
+  //           website: clubData.WWW,
+  //         };
+  //         const newClub = new Club(fieldsToCreate);
+  //         return newClub.save().then(() => {
+  //     logger('success')(`${newClub.shortName} created by ${req.user.email} alongside event.`);
+  //           return newClub;
+  //         });
+  //       });
+  //       Promise.all(createClubs).then((createdClubs) => {
+  //         const createdClubsIds = createdClubs.map(createdClub => createdClub._id);
+  //         // console.log('createdClubsIds', createdClubsIds);
+  //         // console.log('foundClubsIds', foundClubsIds);
+  //         req.body.organisedBy = createdClubsIds.concat(foundClubsIds);
+  //         return createEvent(req, res);
+  //       }).catch((err) => {
+  //         logger('error')('Error creating club alongside event:', err.message);
+  //         return res.status(400).send({ error: err.message });
+  //       });
+  //     });
+  //   });
+  // })
+  // .catch((orisErr) => {
+  //   logger('error')(`ORIS API error: ${orisErr.message}.`);
+  //   return res.status(400).send({ error: orisErr.message });
+  // });
+};
+
 // Post a new comment against the specified user's map in this event
 const postComment = (req, res) => {
   logReq(req);
@@ -356,22 +548,26 @@ const postMap = (req, res) => {
           //   const transformedPoint2 = projectPoint(origin, trackCoords[j], matrix2);
           //   const transformedPoint3 = projectPoint(origin, trackCoords[j], matrix3);
           //   // console.log('transformed point0:', transformedPoint);
-          //   const offsetPoint0 = [transformedPoint0[0] + offsetX, transformedPoint0[1] + offsetY];
+          // const offsetPoint0 = [transformedPoint0[0] + offsetX, transformedPoint0[1] + offsetY];
           //   console.log('offset point 0:', offsetPoint0);
-          //   const offsetPoint1 = [transformedPoint1[0] + offsetX, transformedPoint1[1] + offsetY];
+          // const offsetPoint1 = [transformedPoint1[0] + offsetX, transformedPoint1[1] + offsetY];
           //   console.log('offset point 1:', offsetPoint1);
-          //   const offsetPoint2 = [transformedPoint2[0] + offsetX, transformedPoint2[1] + offsetY];
+          // const offsetPoint2 = [transformedPoint2[0] + offsetX, transformedPoint2[1] + offsetY];
           //   console.log('offset point 2:', offsetPoint2);
-          //   const offsetPoint3 = [transformedPoint3[0] + offsetX, transformedPoint3[1] + offsetY];
+          // const offsetPoint3 = [transformedPoint3[0] + offsetX, transformedPoint3[1] + offsetY];
           //   console.log('offset point 3:', offsetPoint3);
           // }
           // const { mapCorners } = qRData;
           // console.log('nw corner', mapCorners.nw.lat, mapCorners.nw.long);
           // console.log('maps to', projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long]));
-          // const transformedPoint0 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix0);
-          // const transformedPoint1 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix1);
-          // const transformedPoint2 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix2);
-          // const transformedPoint3 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long], matrix3);
+          // const transformedPoint0 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long],
+          // matrix0);
+          // const transformedPoint1 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long],
+          // matrix1);
+          // const transformedPoint2 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long],
+          // matrix2);
+          // const transformedPoint3 = projectPoint(origin, [mapCorners.nw.lat, mapCorners.nw.long],
+          // matrix3);
           // const offsetPoint0 = [transformedPoint0[0] + offsetX, transformedPoint0[1] + offsetY];
           // console.log('offset point 0:', offsetPoint0);
           // const offsetPoint1 = [transformedPoint1[0] + offsetX, transformedPoint1[1] + offsetY];
@@ -461,6 +657,20 @@ const postMap = (req, res) => {
             // console.log('runners:', foundEvent.runners);
             // console.log('newRunners:', newRunners);
             newEvent.runners = newRunners;
+            if (qRData.isGeocoded) {
+              if (!foundEvent.locCornerSW || foundEvent.locCornerSW.length === 0) {
+                newEvent.locCornerSW = [qRData.mapCorners.sw.lat, qRData.mapCorners.sw.long];
+              }
+              if (!foundEvent.locCornerNE || foundEvent.locCornerNE.length === 0) {
+                newEvent.locCornerNE = [qRData.mapCorners.ne.lat, qRData.mapCorners.ne.long];
+              }
+              if (!foundEvent.locLat || foundEvent.locLat === '') {
+                newEvent.locLat = qRData.mapCentre.lat;
+              }
+              if (!foundEvent.locLong || foundEvent.locLong === '') {
+                newEvent.locLong = qRData.mapCentre.long;
+              }
+            }
             return newEvent.save();
           })
           .then((updatedEvent) => {
@@ -541,7 +751,6 @@ const deleteMap = (req, res) => {
 
 // create a new event using oris data *eventid is ORIS event id*
 // if a corresponding event is already in db, fill empty fields only
-// create runner fields for logged in user if found in ORIS (i.e. can use to add user to event)
 const orisCreateEvent = (req, res) => {
   logReq(req);
   const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
@@ -556,7 +765,7 @@ const orisCreateEvent = (req, res) => {
         logger('error')('Error creating event from ORIS: multi-stage event parent');
         return res.status(400).send({ error: `This ORIS event ID is the parent of a multi-stage event. The individual events are ${includedEvents}.` });
       }
-      // later work once linkedEvent ready - add the following 'big picture' actions instead:
+      // ? later work once linkedEvent ready - add the following 'big picture' actions instead:
       // 1. if Stages !== "0" create a linkedEvent record *instead* and then the events within
       // it (Stage1, Stage2, ... Stage7 if not "0")
       // 2. if ParentID !== null, create a linkedEvent record from that parent then the siblings
@@ -808,6 +1017,8 @@ const getEventList = (req, res) => {
           locCountry: foundEvent.locCountry,
           locLat: foundEvent.locLat,
           locLong: foundEvent.locLong,
+          locCornerSW: foundEvent.locCornerSW,
+          locCornerNE: foundEvent.locCornerNE,
           organisedBy: foundEvent.organisedBy,
           linkedTo: foundEvent.linkedTo,
           totalRunners: foundEvent.runners.length || 0,
@@ -905,6 +1116,10 @@ const getEvent = (req, res) => {
       path: 'runners.user',
       select: '_id displayName fullName regNumber orisId profileImage visibility',
       populate: { path: 'memberOf', select: '_id shortName' },
+    })
+    .populate({
+      path: 'runners.comments.author',
+      select: '_id displayName fullName regNumber',
     })
     .select('-active -__v')
     .then((foundEvent) => {
@@ -1043,7 +1258,7 @@ const updateEvent = (req, res) => {
               .filter(id => !newLinkedEvents.includes(id));
             // console.log('added:', addedLinkedEventIds, 'removed:', removedLinkedEventIds);
             if (ownerId) fieldsToUpdate.owner = req.body.owner;
-            console.log('fieldsToUpdate:', fieldsToUpdate);
+            // console.log('fieldsToUpdate:', fieldsToUpdate);
             const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
             // console.log('fields to be updated:', numberOfFieldsToUpdate);
             if (numberOfFieldsToUpdate === 0) {
@@ -1279,8 +1494,11 @@ const deleteEvent = (req, res) => {
         .concat((`0${now.getHours()}`).slice(-2))
         .concat((`0${now.getMinutes()}`).slice(-2));
       const newName = `${eventToDelete.name} ${deletedAt}`;
+      const newOrisId = (eventToDelete.orisId)
+        ? `${eventToDelete.orisId} ${deletedAt}`
+        : null;
       return Event.findByIdAndUpdate(eventid,
-        { $set: { active: false, name: newName } },
+        { $set: { active: false, name: newName, orisId: newOrisId } },
         { new: true })
         .then((deletedEvent) => {
           // console.log('deletedEvent:', deletedEvent);
@@ -1356,6 +1574,7 @@ module.exports = {
   createEvent,
   createEventLink,
   addEventRunner,
+  orisAddEventRunner,
   postComment,
   validateMapUploadPermission,
   postMap,
