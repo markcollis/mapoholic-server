@@ -496,6 +496,7 @@ const postMap = (req, res) => {
         sharp(newFileLocation)
           .resize(thumbnailSize, thumbnailSize, { fit: 'inside' })
           .toFile(thumbnail, (thumbErr) => {
+            sharp.cache(false); // stops really confusing behaviour if changing more than once!
             if (thumbErr) throw err;
           });
         sharp(newFileLocation)
@@ -511,6 +512,7 @@ const postMap = (req, res) => {
                 height: extractHeight,
               })
               .toFile(extract, (extractErr) => {
+                sharp.cache(false); // stops really confusing behaviour if changing more than once!
                 if (extractErr) throw err;
               });
           });
