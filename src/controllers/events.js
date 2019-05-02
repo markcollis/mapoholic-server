@@ -300,6 +300,7 @@ const orisAddEventRunner = (req, res) => {
       .then(response => response.json());
     return Promise.all([getOrisEventData, getOrisEntryData, getOrisResultsData])
       .then(([orisEventData, orisEntryData, orisResultsData]) => {
+        console.log('ORIS requests made');
         const runnerEntryData = orisEntryData.Data[Object.keys(orisEntryData.Data)
           .filter((entryKey) => {
             return orisEntryData.Data[entryKey].UserID === requestorOrisId;
@@ -308,9 +309,10 @@ const orisAddEventRunner = (req, res) => {
         if (runnerEntryData && runnerEntryData.ClassID) {
           runnerClassData = orisEventData.Data.Classes[`Class_${runnerEntryData.ClassID}`];
         }
+        console.log('runnerClassData:', runnerClassData);
         let classResultsData = null;
         let runnerResultsData = null;
-        if (orisResultsData && orisResultsData.length > 0) {
+        if (orisResultsData && Object.keys(orisResultsData.Data).length > 0) {
           classResultsData = Object.keys(orisResultsData.Data)
             .filter((resultKey) => {
               return orisResultsData.Data[resultKey].ClassID === runnerEntryData.ClassID;
@@ -324,6 +326,8 @@ const orisAddEventRunner = (req, res) => {
             return result.UserID === requestorOrisId;
           });
         }
+        console.log('classResultsData:', classResultsData);
+        console.log('runnerResultsData:', runnerResultsData);
         // console.log(runnerEntryData, runnerClassData, classResultsData, runnerResultsData);
         req.body = { visibility: req.user.visibility };
         if (runnerClassData) {
@@ -711,36 +715,77 @@ const deleteMap = (req, res) => {
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   return Event.findById(eventid)
-    .then((foundEvent) => {
-      const newEvent = foundEvent;
-      let runnerExists = false;
-      const newRunners = foundEvent.runners.map((runner) => {
-        if (runner.user.toString() === userid) {
-          runnerExists = true;
-          let mapExists = false;
-          runner.maps.map((map) => {
-            const newMap = map;
-            if (newMap.title === title) {
-              mapExists = true;
-              newMap[maptype] = '';
-              newMap.isGeocoded = false;
-              newMap.geo = {};
-            }
-            return newMap;
-          });
-          if (!mapExists) {
-            logger('error')('Error deleting map: Map does not exist');
-            return res.status(400).send({ error: 'Map does not exist.' });
+    .then((foundEvent) => { // determine what changes need to be made
+      const foundRunner = foundEvent.runners.find(runner => runner.user.toString() === userid);
+      if (!foundRunner) throw new Error('Runner does not exist.');
+      // if (!foundRunner) {
+      //   logger('error')('Error deleting map: Runner does not exist');
+      //   return res.status(400).send({ error: 'Runner does not exist.' });
+      // }
+      const foundMap = foundRunner.maps.find(map => map.title === title);
+      if (!foundMap) throw new Error('Map does not exist.');
+      // if (!foundMap) {
+      //   logger('error')('Error deleting map: Map does not exist');
+      //   return res.status(400).send({ error: 'Map does not exist.' });
+      // }
+      console.log('foundMap:', foundMap);
+      const newMapsArray = [];
+      // newMapsArray.push(foundMap); // duplicate for testing
+      const otherMapType = (maptype === 'course') ? 'route' : 'course';
+      foundRunner.maps.forEach((map) => {
+        if (map.title === title) {
+          if (foundMap[otherMapType] && foundMap[otherMapType] !== '') {
+            console.log('*** only need to set map[maptype] to null ***');
+            newMapsArray.push({ ...map, [maptype]: null });
+          } else {
+            console.log('*** need to delete whole map from array ***');
           }
+        } else {
+          newMapsArray.push(map);
         }
-        return runner;
       });
-      if (!runnerExists) {
-        logger('error')('Error deleting map: Runner does not exist');
-        return res.status(400).send({ error: 'Runner does not exist.' });
-      }
-      newEvent.runners = newRunners;
-      return newEvent.save();
+      return Event.findOneAndUpdate(
+        { _id: eventid, 'runners.user': userid }, // identify and reference runner
+        { $set: { 'runners.$.maps': newMapsArray } }, // update map array
+        { new: true }, // return updated event to provide as API response
+      );
+      // const newEvent = foundEvent;
+      // let runnerExists = false;
+      // const newRunners = foundEvent.runners.map((runner) => {
+      //   const newRunner = runner;
+      //   if (runner.user.toString() === userid) {
+      //     runnerExists = true;
+      //     let mapExists = false;
+      //     newRunner.maps = runner.maps.map((map) => {
+      //       const newMap = map;
+      //       if (newMap.title === title) {
+      //         mapExists = true;
+      //         newMap[maptype] = '';
+      //         newMap.isGeocoded = false;
+      //         newMap.geo = {};
+      //       }
+      //       const courseExists = newMap.course && newMap.course !== '';
+      //       const routeExists = newMap.route && newMap.route !== '';
+      //       if (courseExists || routeExists) {
+      //         return newMap;
+      //       }
+      //       console.log('no course or route found - delete this title');
+      //       return newMap;
+      //     });
+      //     console.log('newRunner.maps:', newRunner.maps);
+      //     if (!mapExists) {
+      //       logger('error')('Error deleting map: Map does not exist');
+      //       return res.status(400).send({ error: 'Map does not exist.' });
+      //     }
+      //   }
+      //   return newRunner;
+      // });
+      // if (!runnerExists) {
+      //   logger('error')('Error deleting map: Runner does not exist');
+      //   return res.status(400).send({ error: 'Runner does not exist.' });
+      // }
+      // newEvent.runners = newRunners;
+      // return newEvent.save();
     })
     .then((updatedEvent) => {
       logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
