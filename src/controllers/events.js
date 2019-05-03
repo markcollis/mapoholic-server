@@ -309,7 +309,7 @@ const orisAddEventRunner = (req, res) => {
         if (runnerEntryData && runnerEntryData.ClassID) {
           runnerClassData = orisEventData.Data.Classes[`Class_${runnerEntryData.ClassID}`];
         }
-        console.log('runnerClassData:', runnerClassData);
+        // console.log('runnerClassData:', runnerClassData);
         let classResultsData = null;
         let runnerResultsData = null;
         if (orisResultsData && Object.keys(orisResultsData.Data).length > 0) {
@@ -318,17 +318,12 @@ const orisAddEventRunner = (req, res) => {
               return orisResultsData.Data[resultKey].ClassID === runnerEntryData.ClassID;
             })
             .map(resultKey => orisResultsData.Data[resultKey]);
-          // const runnerResultsData = orisResultsData.Data[Object.keys(orisResultsData.Data)
-          //   .filter((resultKey) => {
-          //     return orisResultsData.Data[resultKey].UserID === requestorOrisId;
-          //   })];
           runnerResultsData = classResultsData.find((result) => {
             return result.UserID === requestorOrisId;
           });
         }
-        console.log('classResultsData:', classResultsData);
-        console.log('runnerResultsData:', runnerResultsData);
-        // console.log(runnerEntryData, runnerClassData, classResultsData, runnerResultsData);
+        // console.log('classResultsData:', classResultsData);
+        // console.log('runnerResultsData:', runnerResultsData);
         req.body = { visibility: req.user.visibility };
         if (runnerClassData) {
           req.body.courseTitle = runnerClassData.Name;
@@ -362,88 +357,6 @@ const orisAddEventRunner = (req, res) => {
         return res.status(400).send({ error: orisErr.message });
       });
   });
-  //   .then((orisEvent) => {
-  //     const eventData = orisEvent.Data;
-  //     // console.log('eventData:', eventData);
-  //
-  //
-  //   req.body = {
-  //     date: eventData.Date,
-  //     name: eventData.Name,
-  //     orisId: eventData.ID,
-  //     mapName: eventData.Map,
-  //     locPlace: eventData.Place,
-  //     locRegions: eventData.Region.split(', '),
-  //     locCountry: 'CZE',
-  //     locLat: parseFloat(eventData.GPSLat),
-  //     locLong: parseFloat(eventData.GPSLon),
-  //     types: typesToCreate,
-  //     website: `https://oris.orientacnisporty.cz/Zavod?id=${eventData.ID}`,
-  //     results: `https://oris.orientacnisporty.cz/Vysledky?id=${eventData.ID}`,
-  //     // always a valid page, whether or not there are any results stored
-  //   };
-  //   // console.log('Documents:', eventData.Documents);
-  //   // console.log('length:', eventData.Documents.length);
-  //   if (Object.keys(eventData.Documents).length > 0) {
-  //     Object.keys(eventData.Documents).forEach((documentRef) => {
-  //       // console.log('documentRef:', documentRef);
-  //       if (eventData.Documents[documentRef].SourceType.ID === '4') {
-  //         req.body.results = eventData.Documents[documentRef].Url;
-  //       }
-  //     });
-  //   }
-  //   if (!['E', 'ET', 'S', 'OST'].includes(eventData.Level.ShortName)) {
-  //     req.body.tags = [eventData.Level.NameCZ];
-  //   }
-  //   // check to see if clubs exist and, if so, get their id; otherwise create them
-  //   const firstClub = eventData.Org1.Abbr;
-  //   const secondClub = eventData.Org2.Abbr || false;
-  //   return Club.find({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
-  //     // console.log('foundClubs:', foundClubs);
-  //     const foundClubsAbbr = foundClubs.map(foundClub => foundClub.shortName);
-  //     const foundClubsIds = foundClubs.map(foundClub => foundClub._id);
-  //     // console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
-  //     const clubOneNeeded = firstClub && !foundClubsAbbr.includes(firstClub);
-  //     const clubTwoNeeded = secondClub && !foundClubsAbbr.includes(secondClub);
-  //     const checkOrisOne = (clubOneNeeded) ? getOrisClubData(firstClub) : Promise.resolve(false);
-  //     const checkOrisTwo = (clubTwoNeeded) ? getOrisClubData(secondClub)
-  //  : Promise.resolve(false);
-  //     Promise.all([checkOrisOne, checkOrisTwo]).then((orisData) => {
-  //       // console.log('orisData:', orisData);
-  //       const createClubs = orisData.map((clubData) => {
-  //         if (!clubData) return Promise.resolve(false);
-  //         // console.log('clubData:', clubData);
-  //         const fieldsToCreate = {
-  //           owner: req.user._id,
-  //           shortName: clubData.Abbr,
-  //           fullName: clubData.Name,
-  //           orisId: clubData.ID,
-  //           country: 'CZE',
-  //           website: clubData.WWW,
-  //         };
-  //         const newClub = new Club(fieldsToCreate);
-  //         return newClub.save().then(() => {
-  //     logger('success')(`${newClub.shortName} created by ${req.user.email} alongside event.`);
-  //           return newClub;
-  //         });
-  //       });
-  //       Promise.all(createClubs).then((createdClubs) => {
-  //         const createdClubsIds = createdClubs.map(createdClub => createdClub._id);
-  //         // console.log('createdClubsIds', createdClubsIds);
-  //         // console.log('foundClubsIds', foundClubsIds);
-  //         req.body.organisedBy = createdClubsIds.concat(foundClubsIds);
-  //         return createEvent(req, res);
-  //       }).catch((err) => {
-  //         logger('error')('Error creating club alongside event:', err.message);
-  //         return res.status(400).send({ error: err.message });
-  //       });
-  //     });
-  //   });
-  // })
-  // .catch((orisErr) => {
-  //   logger('error')(`ORIS API error: ${orisErr.message}.`);
-  //   return res.status(400).send({ error: orisErr.message });
-  // });
 };
 
 // Post a new comment against the specified user's map in this event
@@ -454,7 +367,7 @@ const postComment = (req, res) => {
 
 // upload a scanned map to the specified event for user :userid
 // :maptype is either course or route
-// :maptitle is the label to use for each part of multi-part maps (default: 'map')
+// :maptitle is the label to use for each part of multi-part maps (default: '')
 // app.post('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle'
 const validateMapUploadPermission = (req, res, next) => {
   const allowedToUploadMap = ((req.user.role === 'admin')
@@ -477,7 +390,7 @@ const postMap = (req, res) => {
     maptype,
     maptitle,
   } = req.params;
-  const title = maptitle || 'map';
+  const title = maptitle || '';
   // check that event and user ids are appropriate format
   if (!ObjectID.isValid(eventid) || !ObjectID.isValid(userid)) {
     logger('error')('Error uploading map: invalid ObjectID.');
@@ -718,19 +631,9 @@ const deleteMap = (req, res) => {
     .then((foundEvent) => { // determine what changes need to be made
       const foundRunner = foundEvent.runners.find(runner => runner.user.toString() === userid);
       if (!foundRunner) throw new Error('Runner does not exist.');
-      // if (!foundRunner) {
-      //   logger('error')('Error deleting map: Runner does not exist');
-      //   return res.status(400).send({ error: 'Runner does not exist.' });
-      // }
       const foundMap = foundRunner.maps.find(map => map.title === title);
       if (!foundMap) throw new Error('Map does not exist.');
-      // if (!foundMap) {
-      //   logger('error')('Error deleting map: Map does not exist');
-      //   return res.status(400).send({ error: 'Map does not exist.' });
-      // }
-      console.log('foundMap:', foundMap);
       const newMapsArray = [];
-      // newMapsArray.push(foundMap); // duplicate for testing
       const otherMapType = (maptype === 'course') ? 'route' : 'course';
       foundRunner.maps.forEach((map) => {
         if (map.title === title) {
@@ -749,43 +652,6 @@ const deleteMap = (req, res) => {
         { $set: { 'runners.$.maps': newMapsArray } }, // update map array
         { new: true }, // return updated event to provide as API response
       );
-      // const newEvent = foundEvent;
-      // let runnerExists = false;
-      // const newRunners = foundEvent.runners.map((runner) => {
-      //   const newRunner = runner;
-      //   if (runner.user.toString() === userid) {
-      //     runnerExists = true;
-      //     let mapExists = false;
-      //     newRunner.maps = runner.maps.map((map) => {
-      //       const newMap = map;
-      //       if (newMap.title === title) {
-      //         mapExists = true;
-      //         newMap[maptype] = '';
-      //         newMap.isGeocoded = false;
-      //         newMap.geo = {};
-      //       }
-      //       const courseExists = newMap.course && newMap.course !== '';
-      //       const routeExists = newMap.route && newMap.route !== '';
-      //       if (courseExists || routeExists) {
-      //         return newMap;
-      //       }
-      //       console.log('no course or route found - delete this title');
-      //       return newMap;
-      //     });
-      //     console.log('newRunner.maps:', newRunner.maps);
-      //     if (!mapExists) {
-      //       logger('error')('Error deleting map: Map does not exist');
-      //       return res.status(400).send({ error: 'Map does not exist.' });
-      //     }
-      //   }
-      //   return newRunner;
-      // });
-      // if (!runnerExists) {
-      //   logger('error')('Error deleting map: Runner does not exist');
-      //   return res.status(400).send({ error: 'Runner does not exist.' });
-      // }
-      // newEvent.runners = newRunners;
-      // return newEvent.save();
     })
     .then((updatedEvent) => {
       logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
@@ -1406,17 +1272,32 @@ const updateEventRunner = (req, res) => {
           fieldsToUpdateRunner[key] = req.body[key];
         }
       });
-      // console.log('fieldsToUpdateRunner:', fieldsToUpdateRunner);
+      console.log('fieldsToUpdateRunner:', fieldsToUpdateRunner);
       const numberOfFieldsToUpdate = Object.keys(fieldsToUpdateRunner).length;
       // console.log('fields to be updated:', numberOfFieldsToUpdate);
       if (numberOfFieldsToUpdate === 0) {
         logger('error')('Update runner at event error: no valid fields to update.');
         return res.status(400).send({ error: 'No valid fields to update.' });
       }
-      return Event.findOneAndUpdate({ _id: eventid, 'runners.user': userid },
-        { $set: { 'runners.$': fieldsToUpdateRunner } },
+      const setObject = Object.keys(fieldsToUpdateRunner).reduce((acc, cur) => {
+        return Object.assign(acc, { [`runners.$.${cur}`]: fieldsToUpdateRunner[cur] });
+      }, {});
+      console.log('setObject:', setObject);
+      return Event.findOneAndUpdate(
+        { _id: eventid, 'runners.user': userid },
+        { $set: setObject },
         // { $pull: { runners: { user: userid } } },  // to delete instead of update - use below
-        { new: true })
+        { new: true },
+      )
+        .populate('owner', '_id displayName')
+        .populate('organisedBy', '_id shortName')
+        .populate('linkedTo', '_id displayName')
+        .populate({
+          path: 'runners.user',
+          select: '_id displayName fullName regNumber orisId profileImage visibility',
+          populate: { path: 'memberOf', select: '_id shortName' },
+        })
+        .select('-active -__v')
         .then((updatedEvent) => {
           logger('success')(`Updated ${req.user.email} in ${updatedEvent.name} (${updatedEvent.date}) (${numberOfFieldsToUpdate} field(s)).`);
           return res.status(200).send(updatedEvent);
