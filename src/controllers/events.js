@@ -135,17 +135,21 @@ const createEventLink = (req, res) => {
       }
       fieldsToCreate.includes = eventIds;
       const newLinkedEvent = new LinkedEvent(fieldsToCreate);
-      return newLinkedEvent.save()
-        .then((savedLinkedEvent) => {
-          // now add the linkedEvent reference to the events concerned
-          Event.updateMany({ _id: { $in: eventIds } },
-            { $addToSet: { linkedTo: savedLinkedEvent._id } },
-            { new: true })
-            .then(() => {
-              logger('success')(`${savedLinkedEvent.displayName} created by ${req.user.email}.`);
-              return res.status(200).send(savedLinkedEvent);
-            });
-        });
+      return newLinkedEvent.save((err, savedLinkedEvent) => {
+        savedLinkedEvent
+          .populate('includes', '_id name date')
+          .execPopulate()
+          .then(() => {
+            // now add the linkedEvent reference to the events concerned
+            Event.updateMany({ _id: { $in: eventIds } },
+              { $addToSet: { linkedTo: savedLinkedEvent._id } },
+              { new: true })
+              .then(() => {
+                logger('success')(`${savedLinkedEvent.displayName} created by ${req.user.email}.`);
+                return res.status(200).send(savedLinkedEvent);
+              });
+          });
+      });
     }).catch((err) => {
       logger('error')('Error creating event link:', err.message);
       return res.status(400).send({ error: err.message });
@@ -300,7 +304,7 @@ const orisAddEventRunner = (req, res) => {
       .then(response => response.json());
     return Promise.all([getOrisEventData, getOrisEntryData, getOrisResultsData])
       .then(([orisEventData, orisEntryData, orisResultsData]) => {
-        console.log('ORIS requests made');
+        // console.log('ORIS requests made');
         const runnerEntryData = orisEntryData.Data[Object.keys(orisEntryData.Data)
           .filter((entryKey) => {
             return orisEntryData.Data[entryKey].UserID === requestorOrisId;
@@ -621,13 +625,14 @@ const deleteMap = (req, res) => {
     maptype,
     maptitle,
   } = req.params;
-  const title = maptitle || 'map';
+  const title = maptitle || '';
   // check that event and user ids are appropriate format
   if (!ObjectID.isValid(eventid) || !ObjectID.isValid(userid)) {
     logger('error')('Error deleting map: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   return Event.findById(eventid)
+    .lean() // return normal object rather than mongoose object instance
     .then((foundEvent) => { // determine what changes need to be made
       const foundRunner = foundEvent.runners.find(runner => runner.user.toString() === userid);
       if (!foundRunner) throw new Error('Runner does not exist.');
@@ -636,17 +641,21 @@ const deleteMap = (req, res) => {
       const newMapsArray = [];
       const otherMapType = (maptype === 'course') ? 'route' : 'course';
       foundRunner.maps.forEach((map) => {
+        // console.log('map:', map);
         if (map.title === title) {
           if (foundMap[otherMapType] && foundMap[otherMapType] !== '') {
-            console.log('*** only need to set map[maptype] to null ***');
+            // console.log('*** only need to set map[maptype] to null ***');
+            // const updatedMap = { ...map, [maptype]: null };
+            // console.log('updatedMap:', updatedMap);
             newMapsArray.push({ ...map, [maptype]: null });
           } else {
-            console.log('*** need to delete whole map from array ***');
+            // console.log('*** need to delete whole map from array ***');
           }
         } else {
           newMapsArray.push(map);
         }
       });
+      // console.log('newMapsArray:', newMapsArray);
       return Event.findOneAndUpdate(
         { _id: eventid, 'runners.user': userid }, // identify and reference runner
         { $set: { 'runners.$.maps': newMapsArray } }, // update map array
@@ -656,7 +665,8 @@ const deleteMap = (req, res) => {
     .then((updatedEvent) => {
       logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
       return res.status(200).send(updatedEvent);
-    }).catch((updateEventErr) => {
+    })
+    .catch((updateEventErr) => {
       logger('error')('Error deleting map:', updateEventErr.message);
       return res.status(400).send({ error: updateEventErr.message });
     });
@@ -934,7 +944,7 @@ const getEventList = (req, res) => {
           locCornerNE: foundEvent.locCornerNE,
           organisedBy: foundEvent.organisedBy,
           linkedTo: foundEvent.linkedTo,
-          totalRunners: foundEvent.runners.length || 0,
+          // totalRunners: 0, // changed below if there are visible runners
           types: foundEvent.types,
           tags: foundEvent.tags,
         };
@@ -965,6 +975,7 @@ const getEventList = (req, res) => {
             return false;
           });
           eventDetails.runners = selectedRunners.filter(runner => runner);
+          // eventDetails.totalRunners = eventDetails.runners.length;
         }
         return eventDetails;
       });
@@ -1272,7 +1283,7 @@ const updateEventRunner = (req, res) => {
           fieldsToUpdateRunner[key] = req.body[key];
         }
       });
-      console.log('fieldsToUpdateRunner:', fieldsToUpdateRunner);
+      // console.log('fieldsToUpdateRunner:', fieldsToUpdateRunner);
       const numberOfFieldsToUpdate = Object.keys(fieldsToUpdateRunner).length;
       // console.log('fields to be updated:', numberOfFieldsToUpdate);
       if (numberOfFieldsToUpdate === 0) {
@@ -1282,7 +1293,7 @@ const updateEventRunner = (req, res) => {
       const setObject = Object.keys(fieldsToUpdateRunner).reduce((acc, cur) => {
         return Object.assign(acc, { [`runners.$.${cur}`]: fieldsToUpdateRunner[cur] });
       }, {});
-      console.log('setObject:', setObject);
+      // console.log('setObject:', setObject);
       return Event.findOneAndUpdate(
         { _id: eventid, 'runners.user': userid },
         { $set: setObject },
@@ -1357,6 +1368,8 @@ const updateEventLink = (req, res) => {
         return res.status(400).send({ error: 'No valid fields to update.' });
       }
       return LinkedEvent.findByIdAndUpdate(eventlinkid, { $set: fieldsToUpdate }, { new: true })
+        .populate('includes', '_id name date')
+        .select('-__v')
         .then((updatedLinkedEvent) => {
           // now change the linkedEvent references in relevant Events
           Event.updateMany({ _id: { $in: (addedEventIds || []) } },
