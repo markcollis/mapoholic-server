@@ -71,7 +71,6 @@ module.exports = (app) => {
   app.post('/events/:eventid/oris', requireAuth, Events.orisAddEventRunner);
   // *** autopopulate fields from ORIS for current user then call addEventRunner ***
   // *** DONE ***
-
   // upload a scanned map to the specified event for user :userid
   // :maptype is either course or route
   // :maptitle is the label to use for each part of multi-part maps (optional, default 'map')
@@ -81,7 +80,7 @@ module.exports = (app) => {
   // *** DONE including extracting geo data from QR ***
   // Post a new comment against the specified user's map in this event
   app.post('/events/:eventid/comments/:userid', requireAuth, Events.postComment);
-
+  // *** DONE *** (not thoroughly tested yet)
   // create a new event using oris data *eventid is ORIS event id*
   // if a corresponding event is already in db, fill empty fields only
   // create runner fields for logged in user if found in ORIS (i.e. can use to add user to event)
@@ -90,7 +89,6 @@ module.exports = (app) => {
   // create a set of new events and auto-populate them based on the user's ORIS history
   app.post('/events/oris/user/:userid', requireAuth, Events.orisCreateUserEvents);
   // NOT DONE - CONSIDER WHETHER THIS IS REALLY A GOOD IDEA...
-
 
   // retrieve a list of all events (ids) matching specified criteria
   // [may include events without *maps* visible to current user, include number
@@ -116,8 +114,8 @@ module.exports = (app) => {
   // retrieve all visible details for the specified event as an anonymous browser
   app.get('/events/:eventid/public', publicRoute, Events.getEvent);
   // *** DONE ***
-
   // update the specified event (multiple amendment not supported)
+
   app.patch('/events/:eventid', requireAuth, Events.updateEvent);
   // *** DONE ***
   // update the specified runner and map data (multiple amendment not supported)
@@ -128,7 +126,7 @@ module.exports = (app) => {
   // *** DONE ***
   // edit the specified comment (multiple amendment not supported)
   app.patch('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.updateComment);
-
+  // *** DONE *** (not thoroughly tested)
 
   // delete the specified event (multiple delete not supported)
   // [will fail if other users have records attached to event, unless admin]
@@ -148,9 +146,5 @@ module.exports = (app) => {
   // *** DONE ***
   // delete the specified comment (multiple deletion not supported)
   app.delete('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.deleteComment);
-
-
-  //    *** from initial testing, to be deleted when others are complete ***
-  app.post('/login', requireLogin, Authentication.login); // => /users, front end to be changed
-  app.post('/signup', Authentication.signup); // => /users, front end to be changed
+  // *** DONE *** (not thoroughly tested)
 };

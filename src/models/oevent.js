@@ -25,7 +25,7 @@ const oeventSchema = new mongoose.Schema({
   mapName: { type: String, trim: true }, // ORIS Data.Map
   locPlace: { type: String, trim: true }, // ORIS Data.Place (nearby town, etc.)
   locRegions: [{ type: String, trim: true }], // ORIS Data.Regions
-  locCountry: { type: String, trim: true, validate: value => validator.isISO31661Alpha3(value) },
+  locCountry: { type: String, trim: true, validate: value => (value === '' || validator.isISO31661Alpha3(value)) },
   // not in ORIS but assume CZE if auto-populating from ORIS API
   locLat: { type: Number, min: -90, max: 90 }, // ORIS Data.GPSLat
   locLong: { type: Number, min: -180, max: 180 }, // ORIS Data.GPSLon
