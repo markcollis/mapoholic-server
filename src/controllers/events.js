@@ -510,14 +510,18 @@ const postMap = (req, res) => {
         sharp(newFileLocation)
           .metadata()
           .then((metadata) => {
-            const centreX = Math.round(metadata.width / 2);
-            const centreY = Math.round(metadata.height / 2);
+            const centreX = Math.floor(metadata.width / 2);
+            const centreY = Math.floor(metadata.height / 2);
+            // check to limit size of extract for small images
+            // (although real maps are unlikely to be this small)
+            const newWidth = Math.min(metadata.width, extractWidth);
+            const newHeight = Math.min(metadata.height, extractHeight);
             return sharp(newFileLocation)
               .extract({
-                left: centreX - (extractWidth / 2),
-                top: centreY - (extractHeight / 2),
-                width: extractWidth,
-                height: extractHeight,
+                left: centreX - Math.floor(newWidth / 2),
+                top: centreY - Math.floor(newHeight / 2),
+                width: newWidth,
+                height: newHeight,
               })
               .toFile(extract, (extractErr) => {
                 sharp.cache(false); // stops really confusing behaviour if changing more than once!
@@ -1052,11 +1056,24 @@ const getEventList = (req, res) => {
               }
             }
             if (canSee) {
+              const mapFiles = [];
+              runner.maps.forEach((map) => {
+                const { course, route } = map;
+                if (course && course !== '') {
+                  mapFiles.push(course);
+                } else if (route && route !== '') {
+                  mapFiles.push(route);
+                }
+              });
+              const extractName = (mapFiles.length > 0)
+                ? mapFiles[0].slice(0, -4).concat('-extract').concat(mapFiles[0].slice(-4))
+                : null;
               return {
                 user: runner.user._id,
                 displayName: runner.user.displayName,
                 courseTitle: runner.user.courseTitle,
                 numberMaps: runner.maps.length,
+                mapExtract: extractName,
               };
             }
             return false;
