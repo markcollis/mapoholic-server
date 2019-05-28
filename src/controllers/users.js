@@ -1,11 +1,12 @@
 const { ObjectID } = require('mongodb');
+const mongoose = require('mongoose');
 const sharp = require('sharp');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-// const url = require('url');
 const User = require('../models/user');
-require('../models/club');
+const Event = require('../models/oevent');
+// require('../models/club'); needed or not??
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
 const { validateClubIds } = require('./validateIds');
@@ -128,6 +129,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
       return { authError: true };
     });
 };
+
 // retrieve full details for the currently logged in user
 const getLoggedInUser = (req, res) => {
   logReq(req);
@@ -148,6 +150,7 @@ const getLoggedInUser = (req, res) => {
       return res.status(400).send({ error: err.message });
     });
 };
+
 // retrieve full details for the specified user
 const getUserById = (req, res) => {
   logReq(req);
@@ -216,7 +219,6 @@ const updateUser = (req, res) => {
       fieldsToUpdate.role = req.body.role;
     }
   });
-
   // memberOf needs special treatment: array of ObjectIDs
   // note that this will REPLACE the existing array not add to it/edit it
   const checkClubIds = (req.body.memberOf && Array.isArray(req.body.memberOf))
@@ -307,13 +309,16 @@ const deleteUser = (req, res) => {
         { new: true })
         .select('-password')
         .then((deletedUser) => {
-          // console.log('deletedUser', deletedUser);
-          logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
-          // Should we now check and remove references? orphan profile images?
-          // 1. Owners of club and event records - replace with another? who?
-          // 2. Runner records within events - delete runner completely? orphan map files?
-          // 3. Comment authors - delete comments completely?
-          return res.status(200).send(deletedUser);
+          // Consider all related records:
+          // 1. Owner of club and event records: leave as deleted user, only admin can see them.
+          // 2. Comment author: leave as deleted user, strip 'deleted' when retrieving comments?
+          // 3. Runner records of this user: set to 'private' so admin can retrieve if needed.
+          return Event.updateMany({ 'runners.user': mongoose.Types.ObjectId(id) },
+            { $set: { 'runners.$.visibility': 'private' } })
+            .then(() => {
+              logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
+              return res.status(200).send(deletedUser);
+            });
         })
         .catch((err) => {
           logger('error')('Error deleting user:', err.message);

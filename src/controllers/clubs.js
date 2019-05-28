@@ -1,8 +1,9 @@
 const { ObjectID } = require('mongodb');
+const mongoose = require('mongoose');
 const fetch = require('node-fetch');
-// const url = require('url');
-// const User = require('../models/user');
 const Club = require('../models/club');
+const User = require('../models/user');
+const Event = require('../models/oevent');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
 const { validateUserId } = require('./validateIds');
@@ -273,10 +274,18 @@ const deleteClub = (req, res) => {
         { $set: { active: false, shortName: newShortName } },
         { new: true })
         .then((deletedClub) => {
-          logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
-          // should we now go through and delete all references from User.memberOf
-          // and Event.organisedBy??
-          return res.status(200).send(deletedClub);
+          // now remove all references from User.memberOf
+          User.updateMany({ memberOf: mongoose.Types.ObjectId(id) },
+            { $pull: { memberOf: mongoose.Types.ObjectId(id) } })
+            .then(() => {
+              // now remove all references from Event.organisedBy
+              Event.updateMany({ organisedBy: mongoose.Types.ObjectId(id) },
+                { $pull: { organisedBy: mongoose.Types.ObjectId(id) } })
+                .then(() => {
+                  logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
+                  return res.status(200).send(deletedClub);
+                });
+            });
         })
         .catch((err) => {
           logger('error')('Error deleting club:', err.message);

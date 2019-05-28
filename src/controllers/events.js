@@ -1016,7 +1016,7 @@ const getEventList = (req, res) => {
     .populate('owner', '_id displayName')
     .populate('organisedBy', '_id shortName')
     .populate('linkedTo', '_id displayName')
-    .populate('runners.user', '_id displayName memberOf')
+    .populate('runners.user', '_id displayName memberOf active')
     .select('-active -__v')
     .then((events) => {
       // process to reduce level of detail and exclude non-visible runners
@@ -1035,14 +1035,14 @@ const getEventList = (req, res) => {
           locCornerNE: foundEvent.locCornerNE,
           organisedBy: foundEvent.organisedBy,
           linkedTo: foundEvent.linkedTo,
-          // totalRunners: 0, // changed below if there are visible runners
           types: foundEvent.types,
           tags: foundEvent.tags,
         };
         if (foundEvent.runners.length > 0) {
           const selectedRunners = foundEvent.runners.map((runner) => {
             let canSee = false;
-            if (requestorRole === 'admin') canSee = true;
+            if (requestorRole === 'admin' && runner.user.active) canSee = true;
+            // deleted users remain in the runners array but should be ignored
             if (runner.visibility === 'public') canSee = true;
             if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
               if (runner.visibility === 'all') canSee = true;
@@ -1142,7 +1142,7 @@ const getEvent = (req, res) => {
     .populate('linkedTo', '_id displayName')
     .populate({
       path: 'runners.user',
-      select: '_id displayName fullName regNumber orisId profileImage visibility',
+      select: '_id active displayName fullName regNumber orisId profileImage visibility',
       populate: { path: 'memberOf', select: '_id shortName' },
     })
     .populate({
@@ -1159,7 +1159,7 @@ const getEvent = (req, res) => {
       if (foundEvent.runners.length > 0) {
         const selectedRunners = foundEvent.runners.map((runner) => {
           let canSee = false;
-          if (requestorRole === 'admin') canSee = true;
+          if (requestorRole === 'admin' && runner.user.active) canSee = true;
           if (runner.visibility === 'public') canSee = true;
           if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
             if (runner.visibility === 'all') canSee = true;
@@ -1599,8 +1599,9 @@ const updateComment = (req, res) => {
 };
 
 // DELETE routes
-// delete the specified event (multiple delete not supported) - actually sets active=false
-// [will fail if other users have records attached to event, unless admin]
+// Delete the specified event (multiple delete not supported)
+// Actually sets active=false rather than true delete (i.e. recoverable on server)
+// Will fail if other users have records attached to event, unless done by admin
 const deleteEvent = (req, res) => {
   logReq(req);
   const { eventid } = req.params;
@@ -1617,14 +1618,18 @@ const deleteEvent = (req, res) => {
     }
     // can only delete if owner is the only runner or there are no runners
     // (forcing the deletion of other runners before the event can go)
-    const hasPermissionToDelete = ((requestorRole === 'admin')
-    || (requestorRole === 'standard' && requestorId === eventToDelete.owner.toString()));
+    const isAdmin = (requestorRole === 'admin');
+    const isOwner = (requestorRole === 'standard'
+      && requestorId === eventToDelete.owner.toString());
+    // const hasPermissionToDelete = ((requestorRole === 'admin')
+    // || (requestorRole === 'standard' && requestorId === eventToDelete.owner.toString()));
     const noOtherRunners = (eventToDelete.runners.length === 0)
       || (eventToDelete.runners.filter((runner) => {
         return (runner.user.toString() !== requestorId);
       }).length === 0);
+    const ownerAlone = (isOwner && noOtherRunners);
     // console.log('has permission:', hasPermissionToDelete, 'no others:', noOtherRunners);
-    const allowedToDelete = hasPermissionToDelete && noOtherRunners;
+    const allowedToDelete = isAdmin || ownerAlone;
     // console.log('doesn\'t actually delete yet!');
     // const allowedToDelete = false;
     if (allowedToDelete) {
@@ -1662,11 +1667,78 @@ const deleteEvent = (req, res) => {
     return res.status(401).send({ error: 'Not allowed to delete this event.' });
   });
 };
+
+// app.delete('/events/:eventid/maps/:userid', requireAuth, Events.deleteEventRunner);
 // delete the specified runner and map data (multiple amendment not supported) - actually deletes!
 const deleteEventRunner = (req, res) => {
   logReq(req);
-  res.send('not done yet');
+  const { eventid, userid } = req.params;
+  const requestorId = req.user._id.toString();
+  const requestorRole = req.user.role;
+  if (requestorRole === 'guest') {
+    logger('error')('Error: Guest accounts are not allowed to delete runners.');
+    return res.status(401).send({ error: 'Guest accounts are not allowed to delete runners.' });
+  }
+  const isAdmin = (requestorRole === 'admin');
+  const isRunner = (requestorRole === 'standard' && requestorId === userid);
+  const canDelete = isAdmin || isRunner;
+  if (!canDelete) {
+    logger('error')('Error: You are not allowed to delete this runner.');
+    return res.status(401).send({ error: 'Not allowed to delete this runner.' });
+  }
+  if (!ObjectID.isValid(eventid)) {
+    logger('error')('Error deleting runner: invalid event ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  if (!ObjectID.isValid(userid)) {
+    logger('error')('Error deleting runner: invalid runner ObjectID.');
+    return res.status(400).send({ error: 'Invalid ID.' });
+  }
+  // now need to check database to confirm that runner at event exists
+  return Event.findById(eventid).then((eventToDeleteRunner) => {
+    if (!eventToDeleteRunner) {
+      logger('error')('Error deleting runner: no matching event found.');
+      return res.status(404).send({ error: 'Event could not be found.' });
+    }
+    const selectedRunner = eventToDeleteRunner.runners
+      .find(runner => runner.user.toString() === userid);
+    if (!selectedRunner) {
+      logger('error')('Error deleting runner: runner not found.');
+      return res.status(400).send({ error: 'Runner not found in event, so can not be deleted.' });
+    }
+    // all checks done, can now delete
+    return Event.findOneAndUpdate(
+      { _id: eventid },
+      { $pull: { runners: { user: userid } } },
+      { new: true },
+    )
+      .populate('owner', '_id displayName')
+      .populate('organisedBy', '_id shortName')
+      .populate('linkedTo', '_id displayName')
+      .populate({
+        path: 'runners.user',
+        select: '_id displayName fullName regNumber orisId profileImage visibility',
+        populate: { path: 'memberOf', select: '_id shortName' },
+      })
+      .populate({
+        path: 'runners.comments.author',
+        select: '_id displayName fullName regNumber',
+      })
+      .select('-active -__v')
+      .then((updatedEvent) => {
+        logger('success')(`Deleted runner from ${updatedEvent.name} (${updatedEvent.date}).`);
+        return res.status(200).send(updatedEvent);
+      })
+      .catch((err) => {
+        logger('error')('Error deleting runner:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
+  }).catch((err) => {
+    logger('error')('Error deleting runner:', err.message);
+    return res.status(400).send({ error: err.message });
+  });
 };
+
 // delete the specified link between events (multiple amendment not supported) - actually deletes!
 const deleteEventLink = (req, res) => {
   logReq(req);
@@ -1685,13 +1757,13 @@ const deleteEventLink = (req, res) => {
       }
       return LinkedEvent.deleteOne({ _id: eventlinkid }).then((deletion) => {
         if (deletion.deletedCount === 1) {
+          // should now go through and delete all references from Event.linkedTo
           return Event.updateMany({ _id: { $in: (linkedEventToDelete.includes || []) } },
             { $pull: { linkedTo: mongoose.Types.ObjectId(linkedEventToDelete._id) } })
             .then(() => {
               logger('success')(`Successfully deleted event link ${linkedEventToDelete._id} (${linkedEventToDelete.displayName})`);
               return res.status(200).send(linkedEventToDelete);
             });
-          // should now go through and delete all references from Event.linkedTo
         }
         logger('error')('Error deleting event link: deletedCount not 1');
         return res.status(400).send({ error: 'Error deleting event link: deletedCount not 1' });
@@ -1734,7 +1806,6 @@ const deleteComment = (req, res) => {
     const runnerIds = (eventToDeleteComment.runners.length === 0)
       ? []
       : eventToDeleteComment.runners.map(runner => runner.user.toString());
-    // console.log('runnerIds:', runnerIds);
     if (!runnerIds.includes(userid)) {
       logger('error')('Error deleting comment: runner not found.');
       return res.status(400).send({ error: 'Runner not found in event, so not possible to delete comment.' });
@@ -1751,23 +1822,8 @@ const deleteComment = (req, res) => {
       logger('error')('Error deleting comment: you are not the author or an administrator.');
       return res.status(400).send({ error: 'Only a comment\'s author or an administrator can delete it.' });
     }
-    // console.log('ready to try updating');
-    // console.log('selectedComment', selectedComment);
-    // console.log('newCommentText', newCommentText);
-    // const setObject = Object.keys(fieldsToUpdateRunner).reduce((acc, cur) => {
-    //   return Object.assign(acc, { [`runners.$.${cur}`]: fieldsToUpdateRunner[cur] });
-    // }, {});
-    // console.log('setObject:', setObject);
     return Event.findOneAndUpdate(
       { _id: eventid, 'runners.user': userid },
-      // { _id: eventid, runners: { $elemMatch: { user: userid, 'comments._id': commentid } } },
-      // { $pull: { 'runners.$[outer].comments.$[inner].text': newCommentText } },
-      // {
-      //   arrayFilters: [{ 'outer.user': userid }, { 'inner._id': commentid }],
-      //   new: true,
-      // },
-      // { $push: { 'runners.$.comments': { author: authorId, text: commentText } } },
-      // { $set: setObject },
       { $pull: { 'runners.$.comments': { _id: commentid } } },
       { new: true },
     )
