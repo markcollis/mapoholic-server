@@ -1147,7 +1147,7 @@ const getEvent = (req, res) => {
     })
     .populate({
       path: 'runners.comments.author',
-      select: '_id displayName fullName regNumber',
+      select: '_id displayName fullName active profileImage',
     })
     .select('-active -__v')
     .then((foundEvent) => {
