@@ -170,7 +170,10 @@ const orisAddEventRunner = (req, res) => {
         if (orisResultsData && Object.keys(orisResultsData.Data).length > 0) {
           classResultsData = Object.keys(orisResultsData.Data)
             .filter((resultKey) => {
-              return orisResultsData.Data[resultKey].ClassID === runnerEntryData.ClassID;
+              if (orisResultsData.Data[resultKey] && runnerEntryData) {
+                return orisResultsData.Data[resultKey].ClassID === runnerEntryData.ClassID;
+              }
+              return false;
             })
             .map(resultKey => orisResultsData.Data[resultKey]);
           runnerResultsData = classResultsData.find((result) => {

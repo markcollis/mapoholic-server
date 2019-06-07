@@ -77,16 +77,31 @@ const createEvent = (req, res) => {
         fieldsToCreate.linkedTo = linkedEventIds;
       }
       const newEvent = new Event(fieldsToCreate);
-      return newEvent.save()
-        .then((savedEvent) => {
-          // add event reference to linkedEvents if there are any
-          LinkedEvent.updateMany({ _id: { $in: (linkedEventIds || []) } },
-            { $addToSet: { includes: savedEvent._id } })
-            .then(() => {
-              logger('success')(`${savedEvent.name} on ${savedEvent.date} created by ${req.user.email}.`);
-              return res.status(200).send(savedEvent);
-            });
-        });
+      return newEvent.save((err, savedEvent) => {
+        savedEvent
+          .populate('owner', '_id displayName')
+          .populate('organisedBy', '_id shortName')
+          .populate('linkedTo', '_id displayName')
+          .populate({
+            path: 'runners.user',
+            select: '_id displayName fullName regNumber orisId profileImage visibility',
+            populate: { path: 'memberOf', select: '_id shortName' },
+          })
+          .populate({
+            path: 'runners.comments.author',
+            select: '_id displayName fullName regNumber',
+          })
+          .execPopulate()
+          .then(() => {
+            // add event reference to linkedEvents if there are any
+            LinkedEvent.updateMany({ _id: { $in: (linkedEventIds || []) } },
+              { $addToSet: { includes: savedEvent._id } })
+              .then(() => {
+                logger('success')(`${savedEvent.name} on ${savedEvent.date} created by ${req.user.email}.`);
+                return res.status(200).send(savedEvent);
+              });
+          });
+      });
     }).catch((err) => {
       logger('error')('Error creating event:', err.message);
       return res.status(400).send({ error: err.message });

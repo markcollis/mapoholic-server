@@ -151,41 +151,21 @@ const postMap = (req, res) => {
         }
         const trackDistanceK = Math.floor(trackDistance) / 1000;
         // console.log(JSON.stringify(qRData, null, 2));
-        return Event.findById(eventid)
-          .then((foundEvent) => {
-            const newEvent = foundEvent;
-            let runnerExists = false;
-            const newRunners = foundEvent.runners.map((runner) => {
-              if (runner.user.toString() === userid) {
-                runnerExists = true;
-                let mapExists = false;
-                runner.maps.map((map) => {
-                  const newMap = map;
-                  if (newMap.title === title) {
-                    mapExists = true;
-                    newMap[maptype] = newFileLocation;
-                    if (qRData.isGeocoded) {
-                      newMap.isGeocoded = true;
-                      newMap.geo = {
-                        mapCentre: qRData.mapCentre,
-                        mapCorners: qRData.mapCorners,
-                        imageCorners: qRData.imageCorners,
-                        locationSizePixels: qRData.locationSizePixels,
-                        track: trackCoords,
-                        distanceRun: trackDistanceK,
-                      };
-                    }
-                  }
-                  return newMap;
-                });
-                if (!mapExists) {
-                  const mapToAdd = {
-                    title,
-                    [maptype]: newFileLocation,
-                  };
+        return Event.findById(eventid).then((eventToUpdate) => {
+          const fieldsToUpdate = {};
+          let runnerExists = false;
+          const newRunners = eventToUpdate.runners.map((runner) => {
+            if (runner.user.toString() === userid) {
+              runnerExists = true;
+              let mapExists = false;
+              runner.maps.map((map) => {
+                const newMap = map;
+                if (newMap.title === title) {
+                  mapExists = true;
+                  newMap[maptype] = newFileLocation;
                   if (qRData.isGeocoded) {
-                    mapToAdd.isGeocoded = true;
-                    mapToAdd.geo = {
+                    newMap.isGeocoded = true;
+                    newMap.geo = {
                       mapCentre: qRData.mapCentre,
                       mapCorners: qRData.mapCorners,
                       imageCorners: qRData.imageCorners,
@@ -194,59 +174,92 @@ const postMap = (req, res) => {
                       distanceRun: trackDistanceK,
                     };
                   }
-                  runner.maps.push(mapToAdd);
                 }
-              }
-              return runner;
-            });
-            if (!runnerExists) {
-              const runnerToAdd = {
-                user: userid,
-                maps: {
+                return newMap;
+              });
+              if (!mapExists) {
+                const mapToAdd = {
                   title,
                   [maptype]: newFileLocation,
-                },
-              };
-              if (qRData.isGeocoded) {
-                runnerToAdd.maps.isGeocoded = true;
-                runnerToAdd.maps.geo = {
-                  mapCentre: qRData.mapCentre,
-                  mapCorners: qRData.mapCorners,
-                  imageCorners: qRData.imageCorners,
-                  locationSizePixels: qRData.locationSizePixels,
-                  track: trackCoords,
-                  distanceRun: trackDistanceK,
                 };
-              }
-              newRunners.push(runnerToAdd);
-            }
-            // console.log('runners:', foundEvent.runners);
-            // console.log('newRunners:', newRunners);
-            newEvent.runners = newRunners;
-            if (qRData.isGeocoded) {
-              if (!foundEvent.locCornerSW || foundEvent.locCornerSW.length === 0) {
-                newEvent.locCornerSW = [qRData.mapCorners.sw.lat, qRData.mapCorners.sw.long];
-              }
-              if (!foundEvent.locCornerNE || foundEvent.locCornerNE.length === 0) {
-                newEvent.locCornerNE = [qRData.mapCorners.ne.lat, qRData.mapCorners.ne.long];
-              }
-              if (!foundEvent.locLat || foundEvent.locLat === '') {
-                newEvent.locLat = qRData.mapCentre.lat;
-              }
-              if (!foundEvent.locLong || foundEvent.locLong === '') {
-                newEvent.locLong = qRData.mapCentre.long;
+                if (qRData.isGeocoded) {
+                  mapToAdd.isGeocoded = true;
+                  mapToAdd.geo = {
+                    mapCentre: qRData.mapCentre,
+                    mapCorners: qRData.mapCorners,
+                    imageCorners: qRData.imageCorners,
+                    locationSizePixels: qRData.locationSizePixels,
+                    track: trackCoords,
+                    distanceRun: trackDistanceK,
+                  };
+                }
+                runner.maps.push(mapToAdd);
               }
             }
-            return newEvent.save();
-          })
-          .then((updatedEvent) => {
-            // console.log('updatedEvent:', updatedEvent);
-            logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
-            return res.status(200).send(updatedEvent);
-          }).catch((updateEventErr) => {
-            logger('error')('Error recording updated map references:', updateEventErr.message);
-            return res.status(400).send({ error: updateEventErr.message });
+            return runner;
           });
+          if (!runnerExists) {
+            const runnerToAdd = {
+              user: userid,
+              maps: {
+                title,
+                [maptype]: newFileLocation,
+              },
+            };
+            if (qRData.isGeocoded) {
+              runnerToAdd.maps.isGeocoded = true;
+              runnerToAdd.maps.geo = {
+                mapCentre: qRData.mapCentre,
+                mapCorners: qRData.mapCorners,
+                imageCorners: qRData.imageCorners,
+                locationSizePixels: qRData.locationSizePixels,
+                track: trackCoords,
+                distanceRun: trackDistanceK,
+              };
+            }
+            newRunners.push(runnerToAdd);
+          }
+          // console.log('runners:', foundEvent.runners);
+          // console.log('newRunners:', newRunners);
+          fieldsToUpdate.runners = newRunners;
+          if (qRData.isGeocoded) {
+            if (!eventToUpdate.locCornerSW || eventToUpdate.locCornerSW.length === 0) {
+              fieldsToUpdate.locCornerSW = [qRData.mapCorners.sw.lat, qRData.mapCorners.sw.long];
+            }
+            if (!eventToUpdate.locCornerNE || eventToUpdate.locCornerNE.length === 0) {
+              fieldsToUpdate.locCornerNE = [qRData.mapCorners.ne.lat, qRData.mapCorners.ne.long];
+            }
+            if (!eventToUpdate.locLat || eventToUpdate.locLat === '') {
+              fieldsToUpdate.locLat = qRData.mapCentre.lat;
+            }
+            if (!eventToUpdate.locLong || eventToUpdate.locLong === '') {
+              fieldsToUpdate.locLong = qRData.mapCentre.long;
+            }
+          }
+          return Event.findByIdAndUpdate(eventid, { $set: fieldsToUpdate }, { new: true })
+            .populate('owner', '_id displayName')
+            .populate('organisedBy', '_id shortName')
+            .populate('linkedTo', '_id displayName')
+            .populate({
+              path: 'runners.user',
+              select: '_id displayName fullName regNumber orisId profileImage visibility',
+              populate: { path: 'memberOf', select: '_id shortName' },
+            })
+            .populate({
+              path: 'runners.comments.author',
+              select: '_id displayName fullName regNumber',
+            })
+            .select('-active -__v')
+            .then((updatedEvent) => {
+              // console.log('updatedEvent:', updatedEvent);
+              logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
+              return res.status(200).send(updatedEvent);
+            })
+            .catch((updateEventErr) => {
+              logger('error')('Error recording updated map references:', updateEventErr.message);
+              return res.status(400).send({ error: updateEventErr.message });
+            });
+        });
       });
     });
   });
@@ -303,11 +316,24 @@ const deleteMap = (req, res) => {
         { _id: eventid, 'runners.user': userid }, // identify and reference runner
         { $set: { 'runners.$.maps': newMapsArray } }, // update map array
         { new: true }, // return updated event to provide as API response
-      );
-    })
-    .then((updatedEvent) => {
-      logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
-      return res.status(200).send(updatedEvent);
+      )
+        .populate('owner', '_id displayName')
+        .populate('organisedBy', '_id shortName')
+        .populate('linkedTo', '_id displayName')
+        .populate({
+          path: 'runners.user',
+          select: '_id displayName fullName regNumber orisId profileImage visibility',
+          populate: { path: 'memberOf', select: '_id shortName' },
+        })
+        .populate({
+          path: 'runners.comments.author',
+          select: '_id displayName fullName regNumber',
+        })
+        .select('-active -__v')
+        .then((updatedEvent) => {
+          logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
+          return res.status(200).send(updatedEvent);
+        });
     })
     .catch((updateEventErr) => {
       logger('error')('Error deleting map:', updateEventErr.message);
