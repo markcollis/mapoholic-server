@@ -6,6 +6,7 @@ const User = require('../models/user');
 const Event = require('../models/oevent');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
+const activityLog = require('./activityLog');
 const { validateUserId } = require('./validateIds');
 
 // *** /clubs routes ***  [Club model]
@@ -78,6 +79,11 @@ const createClub = (req, res) => {
       })
       .then((createdClub) => {
         logger('success')(`${createdClub.shortName} created by ${req.user.email}.`);
+        activityLog({
+          actionType: 'CLUB_CREATED',
+          actionBy: creatorId,
+          club: createdClub._id,
+        });
         return res.status(200).send(createdClub);
       })
       .catch((err) => {
@@ -225,6 +231,11 @@ const updateClub = (req, res) => {
             .select('-active -__v')
             .then((updatedClub) => {
               logger('success')(`${updatedClub.shortName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+              activityLog({
+                actionType: 'CLUB_UPDATED',
+                actionBy: req.user._id,
+                club: id,
+              });
               return res.status(200).send(updatedClub);
             })
             .catch((err) => {
@@ -283,6 +294,11 @@ const deleteClub = (req, res) => {
                 { $pull: { organisedBy: mongoose.Types.ObjectId(id) } })
                 .then(() => {
                   logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
+                  activityLog({
+                    actionType: 'CLUB_DELETED',
+                    actionBy: req.user._id,
+                    club: id,
+                  });
                   return res.status(200).send(deletedClub);
                 });
             });

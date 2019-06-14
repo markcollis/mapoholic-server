@@ -4,6 +4,7 @@ const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
+const activityLog = require('./activityLog');
 const {
   validateEventIds,
 } = require('./validateIds');
@@ -52,6 +53,11 @@ const createEventLink = (req, res) => {
               { new: true })
               .then(() => {
                 logger('success')(`${savedLinkedEvent.displayName} created by ${req.user.email}.`);
+                activityLog({
+                  actionType: 'EVENT_LINK_CREATED',
+                  actionBy: req.user._id,
+                  linkedEvent: savedLinkedEvent._id,
+                });
                 return res.status(200).send(savedLinkedEvent);
               });
           });
@@ -143,6 +149,11 @@ const updateEventLink = (req, res) => {
                 { $pull: { linkedTo: mongoose.Types.ObjectId(updatedLinkedEvent._id) } })
                 .then(() => {
                   logger('success')(`${updatedLinkedEvent.displayName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+                  activityLog({
+                    actionType: 'EVENT_LINK_UPDATED',
+                    actionBy: req.user._id,
+                    linkedEvent: eventlinkid,
+                  });
                   return res.status(200).send(updatedLinkedEvent);
                 });
             });
@@ -178,6 +189,11 @@ const deleteEventLink = (req, res) => {
             { $pull: { linkedTo: mongoose.Types.ObjectId(linkedEventToDelete._id) } })
             .then(() => {
               logger('success')(`Successfully deleted event link ${linkedEventToDelete._id} (${linkedEventToDelete.displayName})`);
+              activityLog({
+                actionType: 'EVENT_LINK_DELETED',
+                actionBy: req.user._id,
+                linkedEvent: eventlinkid,
+              });
               return res.status(200).send(linkedEventToDelete);
             });
         }

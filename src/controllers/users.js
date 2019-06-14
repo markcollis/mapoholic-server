@@ -6,9 +6,9 @@ const fs = require('fs');
 const path = require('path');
 const User = require('../models/user');
 const Event = require('../models/oevent');
-// require('../models/club'); needed or not??
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
+const activityLog = require('./activityLog');
 const { validateClubIds } = require('./validateIds');
 
 // retrieve and format matching user list data
@@ -95,8 +95,6 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
   const requestorClubs = (requestorRole === 'anonymous')
     ? null
     : requestingUser.memberOf.map(club => club._id.toString());
-  // console.log('requestor:', requestorRole, requestorId, requestorClubs);
-  // return User.findById(userId)
   return User.findOne({ _id: userId, active: true })
     .populate('memberOf')
     .select('-password -active -__v')
@@ -105,7 +103,6 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
       const { visibility, _id, memberOf } = profile;
       const profileUserId = _id.toString();
       const profileClubs = memberOf.map(club => club._id.toString());
-      // console.log('target:', visibility, profileUserId, profileClubs);
       // is the requestor allowed to see this user profile or not?
       let allowedToSee = false;
       if (requestorRole === 'admin') allowedToSee = true;
@@ -115,14 +112,9 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
         if (visibility === 'all') allowedToSee = true;
       }
       if (requestorRole !== 'anonymous' && visibility === 'club') {
-        // console.log('profileClubs', profileClubs);
-        // console.log('requestorClubs', requestorClubs);
         const commonClubs = profileClubs.filter(club => requestorClubs.includes(club));
-        // console.log('commonClubs', commonClubs);
         if (commonClubs.length > 0) allowedToSee = true;
-        // console.log('allowedToSeeClub', allowedToSee);
       }
-      // console.log(' -> allowedToSee:', allowedToSee);
       if (allowedToSee) {
         return profile;
       }
@@ -198,7 +190,7 @@ const updateUser = (req, res) => {
     return res.status(404).send({ error: 'Invalid ID.' });
   }
   const fieldsToUpdate = {};
-  const validFields = [ // password needs a separate hook in authentication, possibly email too!
+  const validFields = [ // password needs a separate approach in authentication
     'visibility',
     'displayName',
     'fullName',
@@ -210,7 +202,6 @@ const updateUser = (req, res) => {
     'email',
   ];
   Object.keys(req.body).forEach((key) => {
-    // console.log('filtering on', key, req.query[key]);
     if (validFields.includes(key)) {
       fieldsToUpdate[key] = req.body[key];
     }
@@ -242,22 +233,22 @@ const updateUser = (req, res) => {
       }
     }).then(() => {
       const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
-      // console.log('fields to be updated:', numberOfFieldsToUpdate);
       if (numberOfFieldsToUpdate === 0) {
         logger('error')('Update user error: no valid fields to update.');
         return res.status(400).send({ error: 'No valid fields to update.' });
       }
-      // console.log('fieldsToUpdate:', fieldsToUpdate);
       const allowedToUpdate = ((requestorRole === 'admin')
         || (requestorRole === 'standard' && requestorId === id));
-      // console.log('allowedToUpdate', allowedToUpdate);
       if (allowedToUpdate) {
         return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
           .select('-password')
           .then((updatedUser) => {
-            // updatedUser.validate(vErr => console.log('validation error:', vErr));
-            // console.log('updatedUser', updatedUser);
             logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+            activityLog({
+              actionType: 'USER_UPDATED',
+              actionBy: req.user._id,
+              user: id,
+            });
             return res.status(200).send(updatedUser);
           })
           .catch((err) => {
@@ -317,6 +308,11 @@ const deleteUser = (req, res) => {
             { $set: { 'runners.$.visibility': 'private' } })
             .then(() => {
               logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
+              activityLog({
+                actionType: 'USER_DELETED',
+                actionBy: req.user._id,
+                user: req.params.id,
+              });
               return res.status(200).send(deletedUser);
             });
         })
@@ -333,11 +329,9 @@ const deleteUser = (req, res) => {
 const validateProfileImagePermission = (req, res, next) => {
   const allowedToPostProfileImage = ((req.user.role === 'admin')
   || (req.user.role === 'standard' && req.user._id.toString() === req.params.id.toString()));
-  // console.log('allowed?', allowedToPostProfileImage);
   if (!allowedToPostProfileImage) {
     logger('error')(`Error: ${req.user.email} not allowed to upload profile image for ${req.params.id}.`);
     return res.status(401).send({ error: 'Not allowed to upload profile image for this user.' });
-    // next(new Error('No file uploaded.'));
   }
   return next();
 };
@@ -371,6 +365,11 @@ const postProfileImage = (req, res) => {
         .then((updatedUser) => {
           // console.log('updatedUser', updatedUser);
           logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
+          activityLog({
+            actionType: 'USER_UPDATED',
+            actionBy: req.user._id,
+            user: req.params.id,
+          });
           return res.status(200).send(updatedUser.profileImage);
         }).catch((saveUrlErr) => {
           logger('error')('Error recording new profile image URL:', saveUrlErr.message);

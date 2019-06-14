@@ -1,7 +1,8 @@
 const jwt = require('jwt-simple');
 const User = require('../models/user');
 const logger = require('../utils/logger');
-const logReq = require('./logReq');
+const activityLog = require('./activityLog');
+// const logReq = require('./logReq');
 
 const tokenForUser = (user) => {
   const timestamp = new Date().getTime();
@@ -10,14 +11,14 @@ const tokenForUser = (user) => {
 };
 
 const login = (req, res) => {
-  logReq(req); // WARNING - shows password as plain text
+  // logReq(req); // WARNING - shows password as plain text
   // already authenticated, just need to issue a token
   logger('success')(`Successful login by ${req.user.email}`);
   return res.status(200).send({ token: tokenForUser(req.user) });
 };
 
 const signup = (req, res, next) => {
-  logReq(req); // WARNING - shows password as plain text
+  // logReq(req); // WARNING - shows password as plain text
   const { email, password, displayName } = req.body;
   if (!email || !password) {
     logger('error')('Signup error: either email address or password missing.');
@@ -50,14 +51,18 @@ const signup = (req, res, next) => {
       if (saveUserErr) return next(saveUserErr);
       // return token if successful
       logger('success')(`New user created: ${savedUser._id} (${savedUser.email}).`);
+      activityLog({
+        actionType: 'USER_CREATED',
+        actionBy: savedUser._id,
+        user: savedUser._id,
+      });
       return res.status(200).send({ token: tokenForUser(savedUser) });
     });
   });
-  // return true;
 };
 
 const passwordChange = (req, res) => {
-  logReq(req); // WARNING - shows passwords as plain text
+  // logReq(req); // WARNING - shows passwords as plain text
   const { currentPassword, newPassword } = req.body;
   const requestorId = req.user._id;
   const requestorRole = req.user.role;
@@ -75,7 +80,6 @@ const passwordChange = (req, res) => {
     return res.status(400).send({ error: 'Your password must be at least 8 characters long.' });
   }
   return req.user.comparePassword(currentPassword, (err, isMatch) => {
-    // console.log('isMatch:', isMatch);
     if (err) {
       logger('error')(`Error in comparePassword: ${err.message}.`);
       return res.status(400).send({ error: err.message });
@@ -93,7 +97,6 @@ const passwordChange = (req, res) => {
       { $set: { password: newPassword } },
       { new: true })
       .then((updatedUser) => {
-        // console.log('updatedUser after password change:', updatedUser);
         logger('success')(`Password for ${updatedUser.email} changed by ${req.user.email}.`);
         return res.status(200).send({ status: 'Password changed successfully.' });
       }).catch((updateErr) => {

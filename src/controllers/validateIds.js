@@ -62,7 +62,6 @@ const validateLinkedEventIds = (candidateLinkedEventIds) => {
 
 // returns a Promise that resolves to true if the User ID is valid and false if not
 const validateUserId = (candidateUserId) => {
-  // if (!candidateUserId) return Promise.resolve(false);
   if (ObjectID.isValid(candidateUserId)) {
     return User.find({ _id: candidateUserId }).then((users) => {
       return !!users[0];

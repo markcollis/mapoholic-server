@@ -7,6 +7,7 @@ const { getQRData, calculateDistance } = require('../utils/parseQR');
 const Event = require('../models/oevent');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
+const activityLog = require('./activityLog');
 
 // upload a scanned map to the specified event for user :userid
 // :maptype is either course or route
@@ -253,6 +254,12 @@ const postMap = (req, res) => {
             .then((updatedEvent) => {
               // console.log('updatedEvent:', updatedEvent);
               logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
+              activityLog({
+                actionType: 'EVENT_MAP_UPLOADED',
+                actionBy: req.user._id,
+                event: eventid,
+                eventRunner: userid,
+              });
               return res.status(200).send(updatedEvent);
             })
             .catch((updateEventErr) => {
@@ -332,6 +339,12 @@ const deleteMap = (req, res) => {
         .select('-active -__v')
         .then((updatedEvent) => {
           logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
+          activityLog({
+            actionType: 'EVENT_MAP_DELETED',
+            actionBy: req.user._id,
+            event: eventid,
+            eventRunner: userid,
+          });
           return res.status(200).send(updatedEvent);
         });
     })

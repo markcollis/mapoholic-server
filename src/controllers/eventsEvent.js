@@ -6,6 +6,7 @@ const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
+const activityLog = require('./activityLog');
 const {
   validateClubIds,
   validateLinkedEventIds,
@@ -98,6 +99,11 @@ const createEvent = (req, res) => {
               { $addToSet: { includes: savedEvent._id } })
               .then(() => {
                 logger('success')(`${savedEvent.name} on ${savedEvent.date} created by ${req.user.email}.`);
+                activityLog({
+                  actionType: 'EVENT_CREATED',
+                  actionBy: req.user._id,
+                  event: savedEvent._id,
+                });
                 return res.status(200).send(savedEvent);
               });
           });
@@ -635,6 +641,11 @@ const updateEvent = (req, res) => {
                       { $pull: { includes: updatedEvent._id } })
                       .then(() => {
                         logger('success')(`${updatedEvent.name} (${updatedEvent.date}) updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+                        activityLog({
+                          actionType: 'EVENT_UPDATED',
+                          actionBy: req.user._id,
+                          event: eventid,
+                        });
                         return res.status(200).send(updatedEvent);
                       });
                   });
@@ -711,6 +722,11 @@ const deleteEvent = (req, res) => {
             { $pull: { includes: mongoose.Types.ObjectId(deletedEventId) } })
             .then(() => {
               logger('success')(`Successfully deleted event ${deletedEventId} (${name})`);
+              activityLog({
+                actionType: 'EVENT_DELETED',
+                actionBy: req.user._id,
+                event: eventid,
+              });
               return res.status(200).send(deletedEvent);
             });
         })
