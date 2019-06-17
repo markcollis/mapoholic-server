@@ -9,7 +9,7 @@ const activityLogSchema = new mongoose.Schema({
   comment: { type: mongoose.Schema.Types.ObjectId }, // no ref as within oevent model
   event: { type: mongoose.Schema.Types.ObjectId, ref: 'oevent' },
   eventRunner: { type: mongoose.Schema.Types.ObjectId, ref: 'user' },
-  linkedEvent: { type: mongoose.Schema.Types.ObjectId, ref: 'linkedEvent' },
+  linkedEvent: { type: mongoose.Schema.Types.ObjectId, ref: 'linkedevent' },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'user' },
 });
 

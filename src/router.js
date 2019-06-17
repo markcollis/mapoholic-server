@@ -1,6 +1,7 @@
 // Export routing file that will be used in index.js
 //   where app is the express instance.
 const passport = require('passport');
+const Activity = require('./controllers/activity');
 const Authentication = require('./controllers/authentication');
 const Users = require('./controllers/users');
 const images = require('./utils/images');
@@ -147,4 +148,8 @@ module.exports = (app) => {
   // delete the specified comment (multiple deletion not supported)
   app.delete('/events/:eventid/comments/:userid/:commentid', requireAuth, Events.deleteComment);
   // *** DONE *** (not thoroughly tested)
+
+  // *** /activity routes ***  [Activity model]
+  // retrieve a list of recent activity matching specified criteria
+  app.get('/activity', requireAuth, Activity.getActivityLog);
 };
