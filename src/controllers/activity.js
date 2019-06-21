@@ -96,12 +96,17 @@ const getActivityLog = (req, res) => {
       });
       return filteredActivities;
     })
-    // 3. truncate to listLength
+    // 3. sort in descending order of timestamp and truncate to listLength
     .then((activities) => {
       const totalFound = activities.length;
+      const activitiesRecentFirst = activities.sort((a, b) => {
+        if (a.timestamp < b.timestamp) return 1;
+        if (a.timestamp > b.timestamp) return -1;
+        return 0;
+      });
       const activitiesToSend = (listLength && listLength < totalFound)
-        ? activities.slice(0, listLength)
-        : activities;
+        ? activitiesRecentFirst.slice(0, listLength)
+        : activitiesRecentFirst;
       logger('success')(`Returned list of ${activitiesToSend.length} activities.`);
       return res.status(200).send(activitiesToSend);
     })
