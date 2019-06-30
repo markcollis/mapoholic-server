@@ -368,6 +368,7 @@ const getEventList = (req, res) => {
     .populate('owner', '_id displayName')
     .populate('organisedBy', '_id shortName')
     .populate('linkedTo', '_id displayName')
+    // .populate('runners', 'tags')
     .populate('runners.user', '_id displayName memberOf active')
     .select('-active -__v')
     .then((events) => {
@@ -426,6 +427,7 @@ const getEventList = (req, res) => {
                 courseTitle: runner.user.courseTitle,
                 numberMaps: runner.maps.length,
                 mapExtract: extractName,
+                tags: runner.tags,
               };
             }
             return false;
