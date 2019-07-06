@@ -29,7 +29,9 @@ const mapImageStorage = multer.diskStorage({
       maptype,
       maptitle,
     } = req.params;
-    const title = maptitle || 'map';
+    // filter out special characters to avoid creating broken filenames
+    // maptitle is URIComponent-encoded so that it can be used to populate the title field
+    const title = (maptitle) ? maptitle.replace(/[`~!@#$%^&*()|+=?;:'",.<>{}\]\\/\s]/gi, '') : 'map';
     const fileTypes = {
       'image/png': '.png',
       'image/jpeg': '.jpg',
