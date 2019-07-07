@@ -325,6 +325,35 @@ const deleteMap = (req, res) => {
       foundRunner.maps.forEach((map) => {
         // console.log('map:', map);
         if (map.title === title) {
+          // first deal with the files...
+          //  1. extract filename
+          const fileLocation = map[maptype];
+          //  2. delete thumbnail and extract
+          const thumbnailLocation = fileLocation.slice(0, -4)
+            .concat('-thumb').concat(fileLocation.slice(-4));
+          fs.unlink(thumbnailLocation, (delThumbErr) => {
+            if (delThumbErr) throw delThumbErr;
+          });
+          const extractLocation = fileLocation.slice(0, -4)
+            .concat('-extract').concat(fileLocation.slice(-4));
+          fs.unlink(extractLocation, (delExtractErr) => {
+            if (delExtractErr) throw delExtractErr;
+          });
+          //  3. rename main with -deletedAt- extension
+          const now = new Date();
+          const deletedAt = '-deleted:'.concat((`0${now.getDate()}`).slice(-2))
+            .concat((`0${(now.getMonth() + 1)}`).slice(-2))
+            .concat(now.getFullYear().toString())
+            .concat('@')
+            .concat((`0${now.getHours()}`).slice(-2))
+            .concat((`0${now.getMinutes()}`).slice(-2));
+          const newFileLocation = fileLocation.slice(0, -4)
+            .concat(deletedAt).concat(fileLocation.slice(-4));
+          fs.rename(fileLocation, newFileLocation, (renameErr) => {
+            if (renameErr) throw renameErr;
+          });
+
+          // ...then the associated record
           if (foundMap[otherMapType] && foundMap[otherMapType] !== '') {
             // console.log('*** only need to set map[maptype] to null ***');
             // const updatedMap = { ...map, [maptype]: null };
