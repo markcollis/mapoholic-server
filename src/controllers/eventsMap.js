@@ -240,9 +240,17 @@ const postMap = (req, res) => {
                   fieldsToUpdate.locCornerSW = [qRData.mapCorners.sw.lat,
                     qRData.mapCorners.sw.long];
                 }
+                if (!eventToUpdate.locCornerNW || eventToUpdate.locCornerNW.length === 0) {
+                  fieldsToUpdate.locCornerNW = [qRData.mapCorners.nw.lat,
+                    qRData.mapCorners.nw.long];
+                }
                 if (!eventToUpdate.locCornerNE || eventToUpdate.locCornerNE.length === 0) {
                   fieldsToUpdate.locCornerNE = [qRData.mapCorners.ne.lat,
                     qRData.mapCorners.ne.long];
+                }
+                if (!eventToUpdate.locCornerSE || eventToUpdate.locCornerSE.length === 0) {
+                  fieldsToUpdate.locCornerSE = [qRData.mapCorners.se.lat,
+                    qRData.mapCorners.se.long];
                 }
                 if (!eventToUpdate.locLat || eventToUpdate.locLat === '') {
                   fieldsToUpdate.locLat = qRData.mapCentre.lat;

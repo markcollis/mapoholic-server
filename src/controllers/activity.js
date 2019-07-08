@@ -62,9 +62,15 @@ const getActivityLog = (req, res) => {
           if (actionType === 'EVENT_CREATED') include = true;
           if (actionType === 'EVENT_UPDATED') include = true;
           if (eventRunner) {
-            const runnerVisibility = event.runners.find((runner) => {
+            console.log('eventRunner, event:', eventRunner, event);
+            const stillEventRunner = event.runners.find((runner) => {
               return runner.user.toString() === eventRunner._id.toString();
-            }).visibility;
+            });
+            const runnerVisibility = (stillEventRunner)
+              ? stillEventRunner.visibility : 'private'; // default if we don't know
+            // const runnerVisibility = event.runners.find((runner) => {
+            //   return runner.user.toString() === eventRunner._id.toString();
+            // }).visibility;
             // console.log('runnerVisibility:', runnerVisibility);
             if (runnerVisibility === 'public' || runnerVisibility === 'all') include = true;
             if (runnerVisibility === 'club') {

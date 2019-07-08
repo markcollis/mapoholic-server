@@ -29,9 +29,11 @@ const oeventSchema = new mongoose.Schema({
   // not in ORIS but assume CZE if auto-populating from ORIS API
   locLat: { type: Number, min: -90, max: 90 }, // ORIS Data.GPSLat
   locLong: { type: Number, min: -180, max: 180 }, // ORIS Data.GPSLon
-  locCornerSW: [{ type: Number }],
-  locCornerNE: [{ type: Number }],
   // if not from ORIS, auto-populate from first geotagged map upload? or perhaps not needed?
+  locCornerSW: [{ type: Number }],
+  locCornerNW: [{ type: Number }],
+  locCornerNE: [{ type: Number }],
+  locCornerSE: [{ type: Number }],
   types: [{ // discipline labels, fixed set, need to support everything from ORIS
     // Front end will handle translation, store as English strings in db not ORIS abbreviations
     // ORIS Data.Discipline is one field, not an array, but can be combined with
