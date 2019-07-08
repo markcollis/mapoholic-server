@@ -548,8 +548,7 @@ const updateEvent = (req, res) => {
       }
       const runnerIds = (eventToUpdate.runners.length === 0)
         ? []
-        : eventToUpdate.runners.map(runner => runner.user);
-      // console.log('runnerIds:', runnerIds);
+        : eventToUpdate.runners.map(runner => runner.user.toString());
       const currentLinkedEvents = (eventToUpdate.linkedTo.length === 0)
         ? []
         : eventToUpdate.linkedTo.map(linkedEvent => linkedEvent.toString());
@@ -557,7 +556,11 @@ const updateEvent = (req, res) => {
       const allowedToUpdate = ((requestorRole === 'admin')
       || (requestorRole === 'standard' && requestorId === eventToUpdate.owner.toString())
       || (requestorRole === 'standard' && runnerIds.includes(requestorId)));
-      // console.log('allowedToUpdate', allowedToUpdate);
+      // console.log('eventToUpdate:', eventToUpdate);
+      // console.log('requestorRole:', requestorRole);
+      // console.log('requestorId:', requestorId);
+      // console.log('runnerIds:', runnerIds);
+      // console.log('allowedToUpdate:', allowedToUpdate);
       if (allowedToUpdate) {
         const fieldsToUpdate = { };
         const validFields = [
