@@ -19,7 +19,10 @@ if (env === 'development') {
   process.env.MONGODB_URI = process.env.DB_URI;
 } else if (env === 'test') {
   process.env.MONGODB_URI = process.env.DB_TEST_URI;
+} else if (env === 'local') {
+  process.env.MONGODB_URI = process.env.DB_LOCAL_URI;
 }
+
 if (!process.env.JWT_SECRET) {
   logger('warning')('*** Warning: default JWT secret is being used ***');
   process.env.JWT_SECRET = 'insecure if environment variable not set';

@@ -350,32 +350,34 @@ const postProfileImage = (req, res) => {
     // console.log('previous file deleted!');
     //   return fs.rename(req.file.path, newFileLocation, (err) => {
     //    sharp(newFileLocation).resize(200, 200).toFile(newFileLocation.concat('.temp'));
-    return sharp(req.file.path).resize(200, 200).toFile(newFileLocation, (err) => {
-      sharp.cache(false); // stops really confusing behaviour if changing more than once!
-      if (err) throw err;
-      // const profileImageUrl = url.format({
-      //   protocol: req.protocol,
-      //   host: req.get('host'),
-      //   pathname: newFileLocation,
-      // });
-      return User.findByIdAndUpdate(req.params.id,
-        { $set: { profileImage: newFileLocation } },
-        { new: true })
-        .select('-password')
-        .then((updatedUser) => {
-          // console.log('updatedUser', updatedUser);
-          logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
-          activityLog({
-            actionType: 'USER_UPDATED',
-            actionBy: req.user._id,
-            user: req.params.id,
+    return sharp(req.file.path)
+      .resize(200, 200, { fit: 'contain', background: 'white' })
+      .toFile(newFileLocation, (err) => {
+        sharp.cache(false); // stops really confusing behaviour if changing more than once!
+        if (err) throw err;
+        // const profileImageUrl = url.format({
+        //   protocol: req.protocol,
+        //   host: req.get('host'),
+        //   pathname: newFileLocation,
+        // });
+        return User.findByIdAndUpdate(req.params.id,
+          { $set: { profileImage: newFileLocation } },
+          { new: true })
+          .select('-password')
+          .then((updatedUser) => {
+            // console.log('updatedUser', updatedUser);
+            logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
+            activityLog({
+              actionType: 'USER_UPDATED',
+              actionBy: req.user._id,
+              user: req.params.id,
+            });
+            return res.status(200).send(updatedUser.profileImage);
+          }).catch((saveUrlErr) => {
+            logger('error')('Error recording new profile image URL:', saveUrlErr.message);
+            return res.status(400).send({ error: saveUrlErr.message });
           });
-          return res.status(200).send(updatedUser.profileImage);
-        }).catch((saveUrlErr) => {
-          logger('error')('Error recording new profile image URL:', saveUrlErr.message);
-          return res.status(400).send({ error: saveUrlErr.message });
-        });
-    });
+      });
   });
 };
 
