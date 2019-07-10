@@ -21,19 +21,19 @@ const findAndReturnUserList = (userSearchCriteria) => {
       if (profiles.length === 0) return [];
       // reformat into short summary of key data
       return profiles.map((profile) => {
-        const clubList = (profile.memberOf.length > 0)
-          ? profile.memberOf.map(club => club.shortName)
-          : [];
-        return {
-          user_id: profile._id,
+        // const clubList = (profile.memberOf.length > 0)
+        //   ? profile.memberOf.map(club => club.shortName)
+        //   : [];
+        const userSummary = {
+          _id: profile._id,
           displayName: profile.displayName,
-          fullName: profile.fullName || '',
-          email: profile.email,
-          memberOf: clubList,
+          fullName: profile.fullName,
+          memberOf: profile.memberOf,
           profileImage: profile.profileImage || '',
           role: profile.role,
           joined: profile.createdAt,
         };
+        return userSummary;
       });
     });
 };
@@ -241,6 +241,7 @@ const updateUser = (req, res) => {
         || (requestorRole === 'standard' && requestorId === id));
       if (allowedToUpdate) {
         return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+          .populate('memberOf', 'shortName')
           .select('-password')
           .then((updatedUser) => {
             logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
