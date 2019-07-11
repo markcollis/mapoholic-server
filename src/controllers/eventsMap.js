@@ -282,7 +282,33 @@ const postMap = (req, res) => {
                     event: eventid,
                     eventRunner: userid,
                   });
-                  return res.status(200).send(updatedEvent);
+                  // filter out runners that the user isn't allowed to see
+                  const requestorRole = req.user.role;
+                  const requestorId = (requestorRole === 'anonymous')
+                    ? null
+                    : req.user._id.toString();
+                  const requestorClubs = (requestorRole === 'anonymous')
+                    ? null
+                    : req.user.memberOf.map(club => club._id.toString());
+                  const selectedRunners = updatedEvent.runners.filter((runner) => {
+                    let canSee = false;
+                    if (requestorRole === 'admin' && runner.user.active) canSee = true;
+                    if (runner.visibility === 'public') canSee = true;
+                    if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+                      if (runner.visibility === 'all') canSee = true;
+                      if (requestorId === runner.user._id.toString()) canSee = true;
+                      if (runner.visibility === 'club') {
+                        const commonClubs = runner.user.memberOf.filter((clubId) => {
+                          return requestorClubs.includes(clubId.toString());
+                        });
+                        if (commonClubs.length > 0) canSee = true;
+                      }
+                    }
+                    if (canSee) return runner;
+                    return false;
+                  });
+                  const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
+                  return res.status(200).send(eventToSend);
                 })
                 .catch((updateEventErr) => {
                   logger('error')('Error recording updated map references:', updateEventErr.message);
@@ -401,7 +427,33 @@ const deleteMap = (req, res) => {
             event: eventid,
             eventRunner: userid,
           });
-          return res.status(200).send(updatedEvent);
+          // filter out runners that the user isn't allowed to see
+          const requestorRole = req.user.role;
+          const requestorId = (requestorRole === 'anonymous')
+            ? null
+            : req.user._id.toString();
+          const requestorClubs = (requestorRole === 'anonymous')
+            ? null
+            : req.user.memberOf.map(club => club._id.toString());
+          const selectedRunners = updatedEvent.runners.filter((runner) => {
+            let canSee = false;
+            if (requestorRole === 'admin' && runner.user.active) canSee = true;
+            if (runner.visibility === 'public') canSee = true;
+            if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+              if (runner.visibility === 'all') canSee = true;
+              if (requestorId === runner.user._id.toString()) canSee = true;
+              if (runner.visibility === 'club') {
+                const commonClubs = runner.user.memberOf.filter((clubId) => {
+                  return requestorClubs.includes(clubId.toString());
+                });
+                if (commonClubs.length > 0) canSee = true;
+              }
+            }
+            if (canSee) return runner;
+            return false;
+          });
+          const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
+          return res.status(200).send(eventToSend);
         });
     })
     .catch((updateEventErr) => {
