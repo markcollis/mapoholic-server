@@ -166,6 +166,8 @@ const postMap = (req, res) => {
             // console.log(JSON.stringify(qRData, null, 2));
             return Event.findById(eventid).then((eventToUpdate) => {
               const fieldsToUpdate = {};
+              const maptypeUpdated = maptype.concat('Updated');
+              const timeUpdated = new Date().getTime().toString();
               let runnerExists = false;
               const newRunners = eventToUpdate.runners.map((runner) => {
                 if (runner.user.toString() === userid) {
@@ -176,6 +178,7 @@ const postMap = (req, res) => {
                     if (newMap.title === title) {
                       mapExists = true;
                       newMap[maptype] = newFileLocation;
+                      newMap[maptypeUpdated] = timeUpdated;
                       if (qRData.isGeocoded) {
                         newMap.isGeocoded = true;
                         newMap.geo = {
@@ -194,6 +197,7 @@ const postMap = (req, res) => {
                     const mapToAdd = {
                       title,
                       [maptype]: newFileLocation,
+                      [maptypeUpdated]: timeUpdated,
                     };
                     if (qRData.isGeocoded) {
                       mapToAdd.isGeocoded = true;
@@ -217,6 +221,7 @@ const postMap = (req, res) => {
                   maps: {
                     title,
                     [maptype]: newFileLocation,
+                    [maptypeUpdated]: timeUpdated,
                   },
                 };
                 if (qRData.isGeocoded) {
@@ -389,9 +394,6 @@ const deleteMap = (req, res) => {
 
           // ...then the associated record
           if (foundMap[otherMapType] && foundMap[otherMapType] !== '') {
-            // console.log('*** only need to set map[maptype] to null ***');
-            // const updatedMap = { ...map, [maptype]: null };
-            // console.log('updatedMap:', updatedMap);
             newMapsArray.push({ ...map, [maptype]: null });
           } else {
             // console.log('*** need to delete whole map from array ***');

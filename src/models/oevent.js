@@ -113,8 +113,10 @@ const oeventSchema = new mongoose.Schema({
       title: { type: String, trim: true, default: 'map' }, // label e.g. 'part 1'
       course: { type: String, trim: true }, // URL for course map
       route: { type: String, trim: true }, // URL for course map with route marked
-      // thumbnail and extract are auto-generated each time another map is uploaded
-      // shouldn't need their own field, just append '-thumb' or '-extract' to course/route!
+      courseUpdated: { type: String, trim: true }, // strings derived from time to avoid browser
+      routeUpdated: { type: String, trim: true }, // cache issues when updating an image file
+      // thumbnail and extract are auto-generated each time another map is uploaded and
+      // don't need their own field, just append '-thumb' or '-extract' to course/route
       // thumbnail: { type: String, trim: true }, // URL for thumbnail of whole map (200 x 200)
       // extract: { type: String, trim: true }, // URL for map extract (600 x 200?)
       isGeocoded: { type: Boolean, default: false }, // i.e. is there anything to find in 'geo'
