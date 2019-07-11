@@ -62,7 +62,7 @@ const getActivityLog = (req, res) => {
           if (actionType === 'EVENT_CREATED') include = true;
           if (actionType === 'EVENT_UPDATED') include = true;
           if (eventRunner) {
-            console.log('eventRunner, event:', eventRunner, event);
+            // console.log('eventRunner, event:', eventRunner, event);
             const stillEventRunner = event.runners.find((runner) => {
               return runner.user.toString() === eventRunner._id.toString();
             });
