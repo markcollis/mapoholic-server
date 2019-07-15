@@ -113,8 +113,10 @@ const oeventSchema = new mongoose.Schema({
       title: { type: String, trim: true, default: 'map' }, // label e.g. 'part 1'
       course: { type: String, trim: true }, // URL for course map
       route: { type: String, trim: true }, // URL for course map with route marked
+      overlay: { type: String, trim: true }, // URL for route overlay
       courseUpdated: { type: String, trim: true }, // strings derived from time to avoid browser
       routeUpdated: { type: String, trim: true }, // cache issues when updating an image file
+      overlayUpdated: { type: String, trim: true },
       // thumbnail and extract are auto-generated each time another map is uploaded and
       // don't need their own field, just append '-thumb' or '-extract' to course/route
       // thumbnail: { type: String, trim: true }, // URL for thumbnail of whole map (200 x 200)

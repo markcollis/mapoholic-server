@@ -1,4 +1,6 @@
+const fs = require('fs');
 const multer = require('multer'); // support for image upload
+const sharp = require('sharp'); // convert PNG to JPG
 const logger = require('./logger');
 
 // multer setup for uploading profile images and maps
@@ -49,13 +51,6 @@ const uploadImage = multer({
   limits: {
     fileSize: 1000000, // 1MB limit for profile pics should be plenty!
   },
-  // fileFilter(req, file, cb) {
-  //   if (!file.mimetype.match(/image\/(jpeg|png)/)) {
-  //   // if (!file.originalname.toLowerCase().match(/\.jpg|jpeg|png/)) {
-  //     return cb(new Error('Needs to be a JPEG or PNG image.'));
-  //   }
-  //   return cb(undefined, true);
-  // },
 });
 const uploadMap = multer({
   storage: mapImageStorage,
@@ -70,9 +65,35 @@ const errorHandler = (err, req, res, next) => { // eslint exception needed for n
     res.status(400).send({ error: err.message });
   }
 };
+const convertPNG = (req, res, next) => {
+  if (!req.file) {
+    logger('error')('Error: postMap request without image attached.');
+    return res.status(400).send({ error: 'No map image file attached.' });
+  }
+  const { path } = req.file;
+  if (path.slice(-3) === 'png') {
+    console.log('PNG file uploaded, want to convert it to JPG');
+    const newPath = path.slice(0, -3).concat('jpg');
+    return sharp(path).toFormat('jpeg').toFile(newPath).then((info) => {
+      console.log('File converted successfully');
+      req.file.path = newPath; // point eventMap at new file
+      fs.unlink(path, (deleteErr) => {
+        console.log('Error deleting PNG:', deleteErr);
+        if (deleteErr) throw deleteErr;
+      });
+      return next();
+    })
+      .catch((conversionErr) => {
+        console.log('Error in file conversion:', conversionErr);
+        throw conversionErr;
+      });
+  }
+  return next();
+};
 
 module.exports = {
   uploadImage,
   uploadMap,
+  convertPNG,
   errorHandler,
 };

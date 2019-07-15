@@ -8,6 +8,7 @@ const Event = require('../models/oevent');
 const logger = require('../utils/logger');
 const logReq = require('./logReq');
 const activityLog = require('./activityLog');
+const createRouteOverlay = require('../utils/createRouteOverlay');
 
 // upload a scanned map to the specified event for user :userid
 // :maptype is either course or route
@@ -52,156 +53,143 @@ const postMap = (req, res) => {
         // i.e. if we get an error that the file doesn't exist, go ahead and rename
         return fs.rename(req.file.path, newFileLocation, (renameErr) => {
           if (renameErr) throw renameErr;
-          fs.readFile(newFileLocation, (err, data) => {
+          return fs.readFile(newFileLocation, (err, data) => {
             if (err) throw err;
-            // create thumbnail and extract
-            const thumbnailSize = 200; // fit within square box of this dimension in pixels
-            const extractWidth = 600; // pixels
-            const extractHeight = 100; // pixels
-            const thumbnail = newFileLocation.slice(0, -4).concat('-thumb').concat(newFileLocation.slice(-4));
-            const extract = newFileLocation.slice(0, -4).concat('-extract').concat(newFileLocation.slice(-4));
-            sharp(newFileLocation)
-              .resize(thumbnailSize, thumbnailSize, { fit: 'inside' })
-              .toFile(thumbnail, (thumbErr) => {
-                sharp.cache(false); // stops really confusing behaviour if changing more than once!
-                if (thumbErr) throw err;
-              });
-            sharp(newFileLocation)
-              .metadata()
-              .then((metadata) => {
-                const centreX = Math.floor(metadata.width / 2);
-                const centreY = Math.floor(metadata.height / 2);
-                // check to limit size of extract for small images
-                // (although real maps are unlikely to be this small)
-                const newWidth = Math.min(metadata.width, extractWidth);
-                const newHeight = Math.min(metadata.height, extractHeight);
-                return sharp(newFileLocation)
-                  .extract({
-                    left: centreX - Math.floor(newWidth / 2),
-                    top: centreY - Math.floor(newHeight / 2),
-                    width: newWidth,
-                    height: newHeight,
-                  })
-                  .toFile(extract, (extractErr) => {
-                    sharp.cache(false); // stops confusing behaviour if changing more than once!
-                    if (extractErr) throw err;
+            // Try to create overlay:
+            // will return null if files don't exist, are different sizes, etc.
+            // for now, don't worry about confirming through API that overlay has been created
+            const filenameBase = newFileLocation.slice(0, newFileLocation.lastIndexOf('-'));
+            const routeFilename = filenameBase.concat('-route.jpg');
+            const courseFilename = filenameBase.concat('-course.jpg');
+            const overlayThreshold = 63;
+            // returns a Promise resolving to an overlay (new PNG object) or null if unsuccessful
+            console.log('calling createRouteOverlay');
+            createRouteOverlay(routeFilename, courseFilename, overlayThreshold)
+              .then((newOverlay) => {
+                console.log('createRouteOverlay completed');
+                const overlayFilename = (newOverlay) ? filenameBase.concat('-overlay.png') : null;
+                if (newOverlay) {
+                  newOverlay
+                    .pack()
+                    .pipe(fs.createWriteStream(overlayFilename))
+                    .on('finish', () => console.log('file written'));
+                }
+                // create thumbnail and extract
+                const thumbnailSize = 200; // fit within square box of this dimension in pixels
+                const extractWidth = 600; // pixels
+                const extractHeight = 100; // pixels
+                const thumbnail = newFileLocation.slice(0, -4).concat('-thumb').concat(newFileLocation.slice(-4));
+                const extract = newFileLocation.slice(0, -4).concat('-extract').concat(newFileLocation.slice(-4));
+                sharp(newFileLocation)
+                  .resize(thumbnailSize, thumbnailSize, { fit: 'inside' })
+                  .toFile(thumbnail, (thumbErr) => {
+                    sharp.cache(false); // stops really confusing behaviour if changing many times
+                    if (thumbErr) throw err;
                   });
-              });
-            // const toPrint = data.toString('hex').match(/../g).join(' ').slice(0, 512);
-            // console.log(toPrint);
-            // const parsedQR = quickRouteParser.parse(data);
-            // console.log(JSON.stringify(parsedQR, null, 2));
-            const qRData = getQRData(data);
-            let trackCoords = [];
-            let trackDistance = 0;
-            if (qRData.sessions) { // assume first session, first route for now
-              trackCoords = qRData.sessions.sessionData[0].route[0].waypoints;
-              trackDistance = calculateDistance(trackCoords[0], trackCoords[1]);
-              for (let i = 0; i < trackCoords.length - 2; i += 1) {
-                trackDistance += calculateDistance(trackCoords[i], trackCoords[i + 1]);
-              }
-              // const origin = qRData.sessions.sessionData[0].projectionOrigin;
-              // const matrix0 = qRData.sessions.sessionData[0].handles[0].transformationMatrix;
-              // const matrix1 = qRData.sessions.sessionData[0].handles[1].transformationMatrix;
-              // const matrix2 = qRData.sessions.sessionData[0].handles[2].transformationMatrix;
-              // const matrix3 = qRData.sessions.sessionData[0].handles[3].transformationMatrix;
-              // const offsetX = qRData.locationSizePixels.x;
-              // const offsetY = qRData.locationSizePixels.y;
-              // console.log('origin:', origin);
-              // console.log('matrix0:', matrix0);
-              // console.log('matrix1:', matrix1);
-              // console.log('matrix2:', matrix2);
-              // console.log('matrix3:', matrix3);
-              // for (let j = 0; j < 576; j += 25) {
-              //   console.log('track point:', j, trackCoords[j]);
-              //   const projectedPoint = projectPoint(origin, trackCoords[j]);
-              //   console.log('projected point:', projectedPoint);
-              //   const transformedPoint0 = projectPoint(origin, trackCoords[j], matrix0);
-              //   const transformedPoint1 = projectPoint(origin, trackCoords[j], matrix1);
-              //   const transformedPoint2 = projectPoint(origin, trackCoords[j], matrix2);
-              //   const transformedPoint3 = projectPoint(origin, trackCoords[j], matrix3);
-              //   // console.log('transformed point0:', transformedPoint);
-              // const offsetPoint0 = [transformedPoint0[0]+offsetX, transformedPoint0[1]+offsetY];
-              //   console.log('offset point 0:', offsetPoint0);
-              // const offsetPoint1 = [transformedPoint1[0]+offsetX, transformedPoint1[1]+offsetY];
-              //   console.log('offset point 1:', offsetPoint1);
-              // const offsetPoint2 = [transformedPoint2[0]+offsetX, transformedPoint2[1]+offsetY];
-              //   console.log('offset point 2:', offsetPoint2);
-              // const offsetPoint3 = [transformedPoint3[0]+offsetX, transformedPoint3[1]+offsetY];
-              //   console.log('offset point 3:', offsetPoint3);
-              // }
-              // const { mapCorners } = qRData;
-              // console.log('nw corner', mapCorners.nw.lat, mapCorners.nw.long);
-              // console.log('maps to', projectPoint(origin,
-              // [mapCorners.nw.lat, mapCorners.nw.long]));
-              // const transformedPoint0 = projectPoint(origin,
-              // [mapCorners.nw.lat, mapCorners.nw.long],
-              // matrix0);
-              // const transformedPoint1 = projectPoint(origin,
-              // [mapCorners.nw.lat, mapCorners.nw.long],
-              // matrix1);
-              // const transformedPoint2 = projectPoint(origin,
-              // [mapCorners.nw.lat, mapCorners.nw.long],
-              // matrix2);
-              // const transformedPoint3 = projectPoint(origin,
-              // [mapCorners.nw.lat, mapCorners.nw.long],
-              // matrix3);
-              // const offsetPoint0 = [transformedPoint0[0]+offsetX, transformedPoint0[1]+offsetY];
-              // console.log('offset point 0:', offsetPoint0);
-              // const offsetPoint1 = [transformedPoint1[0]+offsetX, transformedPoint1[1]+offsetY];
-              // console.log('offset point 1:', offsetPoint1);
-              // const offsetPoint2 = [transformedPoint2[0]+offsetX, transformedPoint2[1]+offsetY];
-              // console.log('offset point 2:', offsetPoint2);
-              // const offsetPoint3 = [transformedPoint3[0]+offsetX, transformedPoint3[1]+offsetY];
-              // console.log('offset point 3:', offsetPoint3);
-              // console.log('se corner', mapCorners.se.lat, mapCorners.se.long);
-              // console.log('maps to', projectPoint(origin,
-              // [mapCorners.se.lat, mapCorners.se.long]));
-              // console.log('origin', origin);
-              // console.log('maps to', projectPoint(origin, origin));
-              // console.log('trackCoords:', trackCoords);
-              // console.log('trackDistance:', trackDistance);
-            }
-            const trackDistanceK = Math.floor(trackDistance) / 1000;
-            // console.log(JSON.stringify(qRData, null, 2));
-            return Event.findById(eventid).then((eventToUpdate) => {
-              const fieldsToUpdate = {};
-              const maptypeUpdated = maptype.concat('Updated');
-              const timeUpdated = new Date().getTime().toString();
-              let runnerExists = false;
-              const newRunners = eventToUpdate.runners.map((runner) => {
-                if (runner.user.toString() === userid) {
-                  runnerExists = true;
-                  let mapExists = false;
-                  runner.maps.map((map) => {
-                    const newMap = map;
-                    if (newMap.title === title) {
-                      mapExists = true;
-                      newMap[maptype] = newFileLocation;
-                      newMap[maptypeUpdated] = timeUpdated;
-                      if (qRData.isGeocoded) {
-                        newMap.isGeocoded = true;
-                        newMap.geo = {
-                          mapCentre: qRData.mapCentre,
-                          mapCorners: qRData.mapCorners,
-                          imageCorners: qRData.imageCorners,
-                          locationSizePixels: qRData.locationSizePixels,
-                          track: trackCoords,
-                          distanceRun: trackDistanceK,
+                sharp(newFileLocation)
+                  .metadata()
+                  .then((metadata) => {
+                    const centreX = Math.floor(metadata.width / 2);
+                    const centreY = Math.floor(metadata.height / 2);
+                    // check to limit size of extract for small images
+                    // (although real maps are unlikely to be this small)
+                    const newWidth = Math.min(metadata.width, extractWidth);
+                    const newHeight = Math.min(metadata.height, extractHeight);
+                    return sharp(newFileLocation)
+                      .extract({
+                        left: centreX - Math.floor(newWidth / 2),
+                        top: centreY - Math.floor(newHeight / 2),
+                        width: newWidth,
+                        height: newHeight,
+                      })
+                      .toFile(extract, (extractErr) => {
+                        sharp.cache(false); // stops confusing behaviour if changing more than once!
+                        if (extractErr) throw err;
+                      });
+                  });
+                // const toPrint = data.toString('hex').match(/../g).join(' ').slice(0, 512);
+                // console.log(toPrint);
+                // const parsedQR = quickRouteParser.parse(data);
+                // console.log(JSON.stringify(parsedQR, null, 2));
+                const qRData = getQRData(data);
+                let trackCoords = [];
+                let trackDistance = 0;
+                if (qRData.sessions) { // assume first session, first route for now
+                  trackCoords = qRData.sessions.sessionData[0].route[0].waypoints;
+                  trackDistance = calculateDistance(trackCoords[0], trackCoords[1]);
+                  for (let i = 0; i < trackCoords.length - 2; i += 1) {
+                    trackDistance += calculateDistance(trackCoords[i], trackCoords[i + 1]);
+                  }
+                }
+                const trackDistanceK = Math.floor(trackDistance) / 1000;
+                // console.log(JSON.stringify(qRData, null, 2));
+                return Event.findById(eventid).then((eventToUpdate) => {
+                  const fieldsToUpdate = {};
+                  const maptypeUpdated = maptype.concat('Updated');
+                  const timeUpdated = new Date().getTime().toString();
+                  let runnerExists = false;
+                  const newRunners = eventToUpdate.runners.map((runner) => {
+                    if (runner.user.toString() === userid) {
+                      runnerExists = true;
+                      let mapExists = false;
+                      runner.maps.map((map) => {
+                        const newMap = map;
+                        if (newMap.title === title) {
+                          mapExists = true;
+                          newMap[maptype] = newFileLocation;
+                          newMap[maptypeUpdated] = timeUpdated;
+                          if (newOverlay) {
+                            newMap.overlay = overlayFilename;
+                            newMap.overlayUpdated = timeUpdated;
+                          }
+                          if (qRData.isGeocoded) {
+                            newMap.isGeocoded = true;
+                            newMap.geo = {
+                              mapCentre: qRData.mapCentre,
+                              mapCorners: qRData.mapCorners,
+                              imageCorners: qRData.imageCorners,
+                              locationSizePixels: qRData.locationSizePixels,
+                              track: trackCoords,
+                              distanceRun: trackDistanceK,
+                            };
+                          }
+                        }
+                        return newMap;
+                      });
+                      if (!mapExists) {
+                        const mapToAdd = {
+                          title,
+                          [maptype]: newFileLocation,
+                          [maptypeUpdated]: timeUpdated,
                         };
+                        if (qRData.isGeocoded) {
+                          mapToAdd.isGeocoded = true;
+                          mapToAdd.geo = {
+                            mapCentre: qRData.mapCentre,
+                            mapCorners: qRData.mapCorners,
+                            imageCorners: qRData.imageCorners,
+                            locationSizePixels: qRData.locationSizePixels,
+                            track: trackCoords,
+                            distanceRun: trackDistanceK,
+                          };
+                        }
+                        runner.maps.push(mapToAdd);
                       }
                     }
-                    return newMap;
+                    return runner;
                   });
-                  if (!mapExists) {
-                    const mapToAdd = {
-                      title,
-                      [maptype]: newFileLocation,
-                      [maptypeUpdated]: timeUpdated,
+                  if (!runnerExists) {
+                    const runnerToAdd = {
+                      user: userid,
+                      maps: {
+                        title,
+                        [maptype]: newFileLocation,
+                        [maptypeUpdated]: timeUpdated,
+                      },
                     };
                     if (qRData.isGeocoded) {
-                      mapToAdd.isGeocoded = true;
-                      mapToAdd.geo = {
+                      runnerToAdd.maps.isGeocoded = true;
+                      runnerToAdd.maps.geo = {
                         mapCentre: qRData.mapCentre,
                         mapCorners: qRData.mapCorners,
                         imageCorners: qRData.imageCorners,
@@ -210,116 +198,92 @@ const postMap = (req, res) => {
                         distanceRun: trackDistanceK,
                       };
                     }
-                    runner.maps.push(mapToAdd);
+                    newRunners.push(runnerToAdd);
                   }
-                }
-                return runner;
-              });
-              if (!runnerExists) {
-                const runnerToAdd = {
-                  user: userid,
-                  maps: {
-                    title,
-                    [maptype]: newFileLocation,
-                    [maptypeUpdated]: timeUpdated,
-                  },
-                };
-                if (qRData.isGeocoded) {
-                  runnerToAdd.maps.isGeocoded = true;
-                  runnerToAdd.maps.geo = {
-                    mapCentre: qRData.mapCentre,
-                    mapCorners: qRData.mapCorners,
-                    imageCorners: qRData.imageCorners,
-                    locationSizePixels: qRData.locationSizePixels,
-                    track: trackCoords,
-                    distanceRun: trackDistanceK,
-                  };
-                }
-                newRunners.push(runnerToAdd);
-              }
-              // console.log('runners:', foundEvent.runners);
-              // console.log('newRunners:', newRunners);
-              fieldsToUpdate.runners = newRunners;
-              if (qRData.isGeocoded) {
-                if (!eventToUpdate.locCornerSW || eventToUpdate.locCornerSW.length === 0) {
-                  fieldsToUpdate.locCornerSW = [qRData.mapCorners.sw.lat,
-                    qRData.mapCorners.sw.long];
-                }
-                if (!eventToUpdate.locCornerNW || eventToUpdate.locCornerNW.length === 0) {
-                  fieldsToUpdate.locCornerNW = [qRData.mapCorners.nw.lat,
-                    qRData.mapCorners.nw.long];
-                }
-                if (!eventToUpdate.locCornerNE || eventToUpdate.locCornerNE.length === 0) {
-                  fieldsToUpdate.locCornerNE = [qRData.mapCorners.ne.lat,
-                    qRData.mapCorners.ne.long];
-                }
-                if (!eventToUpdate.locCornerSE || eventToUpdate.locCornerSE.length === 0) {
-                  fieldsToUpdate.locCornerSE = [qRData.mapCorners.se.lat,
-                    qRData.mapCorners.se.long];
-                }
-                if (!eventToUpdate.locLat || eventToUpdate.locLat === '') {
-                  fieldsToUpdate.locLat = qRData.mapCentre.lat;
-                }
-                if (!eventToUpdate.locLong || eventToUpdate.locLong === '') {
-                  fieldsToUpdate.locLong = qRData.mapCentre.long;
-                }
-              }
-              return Event.findByIdAndUpdate(eventid, { $set: fieldsToUpdate }, { new: true })
-                .populate('owner', '_id displayName')
-                .populate('organisedBy', '_id shortName')
-                .populate('linkedTo', '_id displayName')
-                .populate({
-                  path: 'runners.user',
-                  select: '_id displayName fullName regNumber orisId profileImage visibility',
-                  populate: { path: 'memberOf', select: '_id shortName' },
-                })
-                .populate({
-                  path: 'runners.comments.author',
-                  select: '_id displayName fullName regNumber',
-                })
-                .select('-active -__v')
-                .then((updatedEvent) => {
-                  // console.log('updatedEvent:', updatedEvent);
-                  logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
-                  activityLog({
-                    actionType: 'EVENT_MAP_UPLOADED',
-                    actionBy: req.user._id,
-                    event: eventid,
-                    eventRunner: userid,
-                  });
-                  // filter out runners that the user isn't allowed to see
-                  const requestorRole = req.user.role;
-                  const requestorId = (requestorRole === 'anonymous')
-                    ? null
-                    : req.user._id.toString();
-                  const requestorClubs = (requestorRole === 'anonymous')
-                    ? null
-                    : req.user.memberOf.map(club => club._id.toString());
-                  const selectedRunners = updatedEvent.runners.filter((runner) => {
-                    let canSee = false;
-                    if (requestorRole === 'admin' && runner.user.active) canSee = true;
-                    if (runner.visibility === 'public') canSee = true;
-                    if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
-                      if (runner.visibility === 'all') canSee = true;
-                      if (requestorId === runner.user._id.toString()) canSee = true;
-                      if (runner.visibility === 'club') {
-                        const commonClubs = runner.user.memberOf.filter((clubId) => {
-                          return requestorClubs.includes(clubId.toString());
-                        });
-                        if (commonClubs.length > 0) canSee = true;
-                      }
+                  // console.log('runners:', foundEvent.runners);
+                  // console.log('newRunners:', newRunners);
+                  fieldsToUpdate.runners = newRunners;
+                  if (qRData.isGeocoded) {
+                    if (!eventToUpdate.locCornerSW || eventToUpdate.locCornerSW.length === 0) {
+                      fieldsToUpdate.locCornerSW = [qRData.mapCorners.sw.lat,
+                        qRData.mapCorners.sw.long];
                     }
-                    if (canSee) return runner;
-                    return false;
-                  });
-                  const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
-                  return res.status(200).send(eventToSend);
-                })
-                .catch((updateEventErr) => {
-                  logger('error')('Error recording updated map references:', updateEventErr.message);
-                  return res.status(400).send({ error: updateEventErr.message });
+                    if (!eventToUpdate.locCornerNW || eventToUpdate.locCornerNW.length === 0) {
+                      fieldsToUpdate.locCornerNW = [qRData.mapCorners.nw.lat,
+                        qRData.mapCorners.nw.long];
+                    }
+                    if (!eventToUpdate.locCornerNE || eventToUpdate.locCornerNE.length === 0) {
+                      fieldsToUpdate.locCornerNE = [qRData.mapCorners.ne.lat,
+                        qRData.mapCorners.ne.long];
+                    }
+                    if (!eventToUpdate.locCornerSE || eventToUpdate.locCornerSE.length === 0) {
+                      fieldsToUpdate.locCornerSE = [qRData.mapCorners.se.lat,
+                        qRData.mapCorners.se.long];
+                    }
+                    if (!eventToUpdate.locLat || eventToUpdate.locLat === '') {
+                      fieldsToUpdate.locLat = qRData.mapCentre.lat;
+                    }
+                    if (!eventToUpdate.locLong || eventToUpdate.locLong === '') {
+                      fieldsToUpdate.locLong = qRData.mapCentre.long;
+                    }
+                  }
+                  return Event.findByIdAndUpdate(eventid, { $set: fieldsToUpdate }, { new: true })
+                    .populate('owner', '_id displayName')
+                    .populate('organisedBy', '_id shortName')
+                    .populate('linkedTo', '_id displayName')
+                    .populate({
+                      path: 'runners.user',
+                      select: '_id displayName fullName regNumber orisId profileImage visibility',
+                      populate: { path: 'memberOf', select: '_id shortName' },
+                    })
+                    .populate({
+                      path: 'runners.comments.author',
+                      select: '_id displayName fullName regNumber',
+                    })
+                    .select('-active -__v')
+                    .then((updatedEvent) => {
+                      // console.log('updatedEvent:', updatedEvent);
+                      logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
+                      activityLog({
+                        actionType: 'EVENT_MAP_UPLOADED',
+                        actionBy: req.user._id,
+                        event: eventid,
+                        eventRunner: userid,
+                      });
+                      // filter out runners that the user isn't allowed to see
+                      const requestorRole = req.user.role;
+                      const requestorId = (requestorRole === 'anonymous')
+                        ? null
+                        : req.user._id.toString();
+                      const requestorClubs = (requestorRole === 'anonymous')
+                        ? null
+                        : req.user.memberOf.map(club => club._id.toString());
+                      const selectedRunners = updatedEvent.runners.filter((runner) => {
+                        let canSee = false;
+                        if (requestorRole === 'admin' && runner.user.active) canSee = true;
+                        if (runner.visibility === 'public') canSee = true;
+                        if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+                          if (runner.visibility === 'all') canSee = true;
+                          if (requestorId === runner.user._id.toString()) canSee = true;
+                          if (runner.visibility === 'club') {
+                            const commonClubs = runner.user.memberOf.filter((clubId) => {
+                              return requestorClubs.includes(clubId.toString());
+                            });
+                            if (commonClubs.length > 0) canSee = true;
+                          }
+                        }
+                        if (canSee) return runner;
+                        return false;
+                      });
+                      const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
+                      return res.status(200).send(eventToSend);
+                    })
+                    .catch((updateEventErr) => {
+                      logger('error')('Error recording updated map references:', updateEventErr.message);
+                      return res.status(400).send({ error: updateEventErr.message });
+                    });
                 });
-            });
+              });
           });
         });
       }
@@ -378,7 +342,13 @@ const deleteMap = (req, res) => {
           fs.unlink(extractLocation, (delExtractErr) => {
             if (delExtractErr) throw delExtractErr;
           });
-          //  3. rename main with -deletedAt- extension
+          //  3. delete overlay if it exists
+          if (map.overlay && map.overlay !== '') {
+            fs.unlink(map.overlay, (delOverlayErr) => {
+              if (delOverlayErr) throw delOverlayErr;
+            });
+          }
+          //  4. rename main with -deletedAt- extension
           const now = new Date();
           const deletedAt = '-deleted:'.concat((`0${now.getDate()}`).slice(-2))
             .concat((`0${(now.getMonth() + 1)}`).slice(-2))
@@ -394,7 +364,7 @@ const deleteMap = (req, res) => {
 
           // ...then the associated record
           if (foundMap[otherMapType] && foundMap[otherMapType] !== '') {
-            newMapsArray.push({ ...map, [maptype]: null });
+            newMapsArray.push({ ...map, [maptype]: null, overlay: '' });
           } else {
             // console.log('*** need to delete whole map from array ***');
           }

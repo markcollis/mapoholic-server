@@ -36,7 +36,9 @@ require('./utils/db');
 // App setup
 app.use(morgan('dev')); // middleware: logging framework for requests
 // output is: method url status response time - response-length
-const corsWhitelist = ['https://localhost:3000', 'https://192.168.0.15:3000'];
+const corsWhitelist = ['https://localhost:3000', 'https://192.168.0.15:3000',
+  'https://localhost:5000', 'https://192.168.0.15:5000',
+  'http://localhost:5000', 'http://192.168.0.15:5000'];
 const corsOptions = {
   origin: (origin, callback) => {
     console.log('CORS request with origin:', origin);
@@ -54,6 +56,10 @@ const corsOptions = {
 };
 app.options('*', cors(corsOptions)); // limit CORS to expected origin
 app.use('*', cors(corsOptions));
+app.use((err, req, res, next) => {
+  if (err.message !== 'Not on CORS whitelist') return next();
+  return res.status(404).send('CORS error');
+});
 // app.use(cors()); // middleware: support CORS requests from anywhere (OK for dev)
 // app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());

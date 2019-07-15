@@ -77,7 +77,7 @@ module.exports = (app) => {
   // :maptitle is the label to use for each part of multi-part maps (optional, default 'map')
   app.post('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle?', requireAuth,
     Events.validateMapUploadPermission, images.uploadMap.single('upload'),
-    Events.postMap, images.errorHandler);
+    images.convertPNG, Events.postMap, images.errorHandler);
   // *** DONE including extracting geo data from QR ***
   // Post a new comment against the specified user's map in this event
   app.post('/events/:eventid/comments/:userid', requireAuth, Events.postComment);
