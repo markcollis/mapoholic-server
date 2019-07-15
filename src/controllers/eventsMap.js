@@ -63,16 +63,15 @@ const postMap = (req, res) => {
             const courseFilename = filenameBase.concat('-course.jpg');
             const overlayThreshold = 63;
             // returns a Promise resolving to an overlay (new PNG object) or null if unsuccessful
-            console.log('calling createRouteOverlay');
+            // console.log('calling createRouteOverlay');
             createRouteOverlay(routeFilename, courseFilename, overlayThreshold)
               .then((newOverlay) => {
-                console.log('createRouteOverlay completed');
+                // console.log('createRouteOverlay completed');
                 const overlayFilename = (newOverlay) ? filenameBase.concat('-overlay.png') : null;
                 if (newOverlay) {
                   newOverlay
                     .pack()
-                    .pipe(fs.createWriteStream(overlayFilename))
-                    .on('finish', () => console.log('file written'));
+                    .pipe(fs.createWriteStream(overlayFilename));
                 }
                 // create thumbnail and extract
                 const thumbnailSize = 200; // fit within square box of this dimension in pixels
@@ -233,7 +232,7 @@ const postMap = (req, res) => {
                     .populate('linkedTo', '_id displayName')
                     .populate({
                       path: 'runners.user',
-                      select: '_id displayName fullName regNumber orisId profileImage visibility',
+                      select: '_id active displayName fullName regNumber orisId profileImage visibility',
                       populate: { path: 'memberOf', select: '_id shortName' },
                     })
                     .populate({
@@ -252,13 +251,16 @@ const postMap = (req, res) => {
                       });
                       // filter out runners that the user isn't allowed to see
                       const requestorRole = req.user.role;
+                      // console.log('requestorRole', requestorRole);
                       const requestorId = (requestorRole === 'anonymous')
                         ? null
                         : req.user._id.toString();
+                      // console.log('requestorId', requestorId);
                       const requestorClubs = (requestorRole === 'anonymous')
                         ? null
                         : req.user.memberOf.map(club => club._id.toString());
                       const selectedRunners = updatedEvent.runners.filter((runner) => {
+                        // console.log('runner.user', runner.user);
                         let canSee = false;
                         if (requestorRole === 'admin' && runner.user.active) canSee = true;
                         if (runner.visibility === 'public') canSee = true;
@@ -272,9 +274,10 @@ const postMap = (req, res) => {
                             if (commonClubs.length > 0) canSee = true;
                           }
                         }
-                        if (canSee) return runner;
-                        return false;
+                        return canSee;
                       });
+                      // console.log('runners, selectedRunners',
+                      // updatedEvent.runners.length, selectedRunners.length);
                       const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
                       return res.status(200).send(eventToSend);
                     })
@@ -383,7 +386,7 @@ const deleteMap = (req, res) => {
         .populate('linkedTo', '_id displayName')
         .populate({
           path: 'runners.user',
-          select: '_id displayName fullName regNumber orisId profileImage visibility',
+          select: '_id active displayName fullName regNumber orisId profileImage visibility',
           populate: { path: 'memberOf', select: '_id shortName' },
         })
         .populate({
@@ -421,8 +424,7 @@ const deleteMap = (req, res) => {
                 if (commonClubs.length > 0) canSee = true;
               }
             }
-            if (canSee) return runner;
-            return false;
+            return canSee;
           });
           const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
           return res.status(200).send(eventToSend);
