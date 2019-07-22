@@ -133,30 +133,6 @@ const getClubList = (req, res) => {
     });
 };
 
-const getClubById = (req, res) => {
-  logReq(req);
-  const { id } = req.params;
-  if (!ObjectID.isValid(id)) {
-    logger('error')('Error getting club details: invalid club id.');
-    return res.status(400).send({ error: 'Invalid ID.' });
-  }
-  return Club.findOne({ _id: id, active: true })
-    .populate('owner', '_id displayName')
-    .select('-active -__v')
-    .then((club) => {
-      if (!club) {
-        logger('error')('Error getting club details: no club found.');
-        return res.status(404).send({ error: 'No club found.' });
-      }
-      logger('success')(`Returned club details for ${club.shortName}.`);
-      return res.status(200).send(club);
-    })
-    .catch((err) => {
-      logger('error')('Error getting club details:', err.message);
-      return res.status(400).send({ error: err.message });
-    });
-};
-
 const updateClub = (req, res) => {
   logReq(req);
   const { id } = req.params;
@@ -316,8 +292,32 @@ const deleteClub = (req, res) => {
 module.exports = {
   createClub,
   getClubList,
-  getClubById,
   updateClub,
   deleteClub,
-  getOrisClubData, // used in events controller rather than router
+  getOrisClubData, // used in events controller not in router
 };
+
+// Redundant - getClubList provides the same information
+// const getClubById = (req, res) => {
+//   logReq(req);
+//   const { id } = req.params;
+//   if (!ObjectID.isValid(id)) {
+//     logger('error')('Error getting club details: invalid club id.');
+//     return res.status(400).send({ error: 'Invalid ID.' });
+//   }
+//   return Club.findOne({ _id: id, active: true })
+//     .populate('owner', '_id displayName')
+//     .select('-active -__v')
+//     .then((club) => {
+//       if (!club) {
+//         logger('error')('Error getting club details: no club found.');
+//         return res.status(404).send({ error: 'No club found.' });
+//       }
+//       logger('success')(`Returned club details for ${club.shortName}.`);
+//       return res.status(200).send(club);
+//     })
+//     .catch((err) => {
+//       logger('error')('Error getting club details:', err.message);
+//       return res.status(400).send({ error: err.message });
+//     });
+// };

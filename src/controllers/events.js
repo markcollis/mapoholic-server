@@ -7,7 +7,6 @@ const {
 const {
   createEvent,
   orisCreateEvent,
-  orisCreateUserEvents,
   orisGetUserEvents,
   getEventList,
   getEvent,
@@ -41,7 +40,6 @@ module.exports = {
   validateMapUploadPermission,
   postMap,
   orisCreateEvent,
-  orisCreateUserEvents,
   orisGetUserEvents,
   getEventList,
   getEventLinks,

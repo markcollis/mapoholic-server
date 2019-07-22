@@ -37,6 +37,7 @@ require('./utils/db');
 app.use(morgan('dev')); // middleware: logging framework for requests
 // output is: method url status response time - response-length
 const corsWhitelist = ['https://localhost:3000', 'https://192.168.0.15:3000',
+  'http://localhost:3000', 'http://192.168.0.15:3000',
   'https://localhost:5000', 'https://192.168.0.15:5000',
   'http://localhost:5000', 'http://192.168.0.15:5000'];
 const corsOptions = {

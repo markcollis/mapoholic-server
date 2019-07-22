@@ -233,14 +233,6 @@ const orisCreateEvent = (req, res) => {
     });
 };
 
-// create a set of new events and auto-populate them based on the user's ORIS history
-const orisCreateUserEvents = (req, res) => {
-  logReq(req);
-  res.status(400).send('Not yet implemented');
-};
-// it may be unwise to ever implement this due to the volume of data this could populate
-// automatically. See orisGetUserEvents for accessing a list of candidate ORIS events to add
-
 // GET routes
 // return a list of summary details of all events in ORIS associated with the current user
 const orisGetUserEvents = (req, res) => {
@@ -750,7 +742,6 @@ const deleteEvent = (req, res) => {
 module.exports = {
   createEvent,
   orisCreateEvent,
-  orisCreateUserEvents,
   orisGetUserEvents,
   getEventList,
   getEvent,
