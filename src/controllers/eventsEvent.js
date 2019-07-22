@@ -51,6 +51,10 @@ const createEvent = (req, res) => {
       'locCountry',
       'locLat',
       'locLong',
+      'locCornerNW', // [lat, long]
+      'locCornerNE', // [lat, long]
+      'locCornerSW', // [lat, long]
+      'locCornerSE', // [lat, long]
       'orisId',
       'types', // []
       'tags', // []
@@ -570,6 +574,10 @@ const updateEvent = (req, res) => {
           'locCountry',
           'locLat',
           'locLong',
+          'locCornerNW', // [lat, long]
+          'locCornerNE', // [lat, long]
+          'locCornerSW', // [lat, long]
+          'locCornerSE', // [lat, long]
           'types', // []
           'tags', // []
           'website',
