@@ -42,7 +42,7 @@ const corsWhitelist = ['https://localhost:3000', 'https://192.168.0.15:3000',
   'http://localhost:3000', 'http://192.168.0.15:3000',
   'https://localhost:5000', 'https://192.168.0.15:5000',
   'http://localhost:5000', 'http://192.168.0.15:5000',
-  'http://85.71.168.97'];
+  'http://85.71.168.97', 'http://mapoholic.markcollis.dev', 'https://mapoholic.markcollis.dev'];
 const corsOptions = {
   origin: (origin, callback) => {
     // logger('info')('CORS request with origin:', origin);
