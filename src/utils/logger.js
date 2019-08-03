@@ -1,5 +1,7 @@
 // common logging calls, should be no console.log elsewhere in codebase
 /* eslint no-console: 0 */
+const fs = require('fs');
+const path = require('path');
 const chalk = require('chalk');
 
 module.exports = logType => (...contents) => {
@@ -27,5 +29,8 @@ module.exports = logType => (...contents) => {
     default:
       output = joinedContents;
   }
-  console.log(output);
+  fs.appendFile(path.join(__dirname, '../logs/app.log'), output.concat('\n'), (err) => {
+    if (err) throw err;
+  });
+  // console.log(output);
 };

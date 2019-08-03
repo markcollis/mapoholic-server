@@ -3,7 +3,7 @@ require('dotenv').config(); // import environment variables from .env file
 const express = require('express'); // node.js web application framework
 const http = require('http');
 // const https = require('https'); // support for https connections (not needed)
-// const fs = require('fs'); // filesystem access for https certificate and key
+const fs = require('fs'); // filesystem access
 const path = require('path'); // manage filesystem paths
 const bodyParser = require('body-parser'); // middleware: format responses
 const morgan = require('morgan'); // middleware: logging framework
@@ -35,22 +35,26 @@ require('./utils/db');
 // App setup
 app.use(morgan('dev')); // middleware: logging framework for requests
 // output is: method url status response time - response-length
+const accessLogStream = fs.createWriteStream(path.join(__dirname, 'logs/access.log'), { flags: 'a' });
+app.use(morgan('common', { stream: accessLogStream }));
+// log to file
 const corsWhitelist = ['https://localhost:3000', 'https://192.168.0.15:3000',
   'http://localhost:3000', 'http://192.168.0.15:3000',
   'https://localhost:5000', 'https://192.168.0.15:5000',
-  'http://localhost:5000', 'http://192.168.0.15:5000'];
+  'http://localhost:5000', 'http://192.168.0.15:5000',
+  'http://85.71.168.97'];
 const corsOptions = {
   origin: (origin, callback) => {
-    logger('info')('CORS request with origin:', origin);
+    // logger('info')('CORS request with origin:', origin);
     if (!origin) {
-      logger('success')('ACCEPT: origin undefined (same-origin)');
+      // logger('success')('ACCEPT: origin undefined (same-origin)');
       return callback(null, true);
     }
     if (corsWhitelist.indexOf(origin) !== -1) {
-      logger('success')('ACCEPT: CORS origin on whitelist');
+      // logger('success')('ACCEPT: CORS origin on whitelist');
       return callback(null, true);
     }
-    logger('error')('REJECT: CORS origin not on whitelist');
+    logger('error')('REJECT: CORS origin not on whitelist -', origin);
     return callback(new Error('Not on CORS whitelist'));
   },
 };

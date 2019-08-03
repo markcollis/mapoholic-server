@@ -4,3 +4,4 @@ src/node_modules/
 src/certs/
 src/.env
 src/images/
+src/logs/
