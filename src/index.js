@@ -1,8 +1,9 @@
 // Main starting point of the application
 require('dotenv').config(); // import environment variables from .env file
 const express = require('express'); // node.js web application framework
-const https = require('https'); // support for https connections
-const fs = require('fs'); // filesystem access for https certificate and key
+const http = require('http');
+// const https = require('https'); // support for https connections (not needed)
+// const fs = require('fs'); // filesystem access for https certificate and key
 const path = require('path'); // manage filesystem paths
 const bodyParser = require('body-parser'); // middleware: format responses
 const morgan = require('morgan'); // middleware: logging framework
@@ -14,12 +15,10 @@ const logger = require('./utils/logger'); // central control of logging
 
 // configuration based on environment variables
 const port = process.env.PORT || 3090;
-const env = process.env.NODE_ENV || 'development';
-if (env === 'development') {
-  process.env.MONGODB_URI = process.env.DB_URI;
-} else if (env === 'test') {
+const nodeEnv = process.env.NODE_ENV;
+if (nodeEnv === 'test') {
   process.env.MONGODB_URI = process.env.DB_TEST_URI;
-} else if (env === 'local') {
+} else if (nodeEnv === 'local') {
   process.env.MONGODB_URI = process.env.DB_LOCAL_URI;
 }
 
@@ -27,8 +26,8 @@ if (!process.env.JWT_SECRET) {
   logger('warning')('*** Warning: default JWT secret is being used ***');
   process.env.JWT_SECRET = 'insecure if environment variable not set';
 }
-const httpsKey = process.env.HTTPS_KEY || './certs/localhost+1-key.pem';
-const httpsCert = process.env.HTTPS_CERT || './certs/localhost+1.pem';
+// const httpsKey = process.env.HTTPS_KEY || './certs/localhost+1-key.pem';
+// const httpsCert = process.env.HTTPS_CERT || './certs/localhost+1.pem';
 
 // Database setup
 require('./utils/db');
@@ -42,16 +41,16 @@ const corsWhitelist = ['https://localhost:3000', 'https://192.168.0.15:3000',
   'http://localhost:5000', 'http://192.168.0.15:5000'];
 const corsOptions = {
   origin: (origin, callback) => {
-    console.log('CORS request with origin:', origin);
+    logger('info')('CORS request with origin:', origin);
     if (!origin) {
-      console.log('ACCEPT: origin undefined (same-origin)');
+      logger('success')('ACCEPT: origin undefined (same-origin)');
       return callback(null, true);
     }
     if (corsWhitelist.indexOf(origin) !== -1) {
-      console.log('ACCEPT: CORS origin on whitelist');
+      logger('success')('ACCEPT: CORS origin on whitelist');
       return callback(null, true);
     }
-    console.log('REJECT: CORS origin not on whitelist');
+    logger('error')('REJECT: CORS origin not on whitelist');
     return callback(new Error('Not on CORS whitelist'));
   },
 };
@@ -67,12 +66,17 @@ app.use(bodyParser.json());
 app.use('/images', express.static(path.join(__dirname, 'images')));
 router(app);
 
+// http server not required, handled by nginx in production
+// const server = https.createServer({ // https is essential to protect data in transit
+//   key: fs.readFileSync(httpsKey),
+//   cert: fs.readFileSync(httpsCert),
+// }, app); // forward anything to the app instance
+// server.listen(port);
+// logger('success')('HTTPS server listening on port:', port);
+
 // Server setup (get express to talk to the outside world...)
-const server = https.createServer({ // https is essential to protect data in transit
-  key: fs.readFileSync(httpsKey),
-  cert: fs.readFileSync(httpsCert),
-}, app); // forward anything to the app instance
+const server = http.createServer(app);
 server.listen(port);
-logger('success')('HTTPS server listening on port:', port);
+logger('success')('HTTP server listening on port:', port);
 
 module.exports = { server }; // for test scripts
