@@ -203,19 +203,23 @@ const postMap = (req, res) => {
                   // console.log('newRunners:', newRunners);
                   fieldsToUpdate.runners = newRunners;
                   if (qRData.isGeocoded) {
-                    if (!eventToUpdate.locCornerSW || eventToUpdate.locCornerSW.length === 0) {
+                    if (!eventToUpdate.locCornerSW || eventToUpdate.locCornerSW.length === 0
+                    || !eventToUpdate.locCornerSW[0] || !eventToUpdate.locCornerSW[1]) {
                       fieldsToUpdate.locCornerSW = [qRData.mapCorners.sw.lat,
                         qRData.mapCorners.sw.long];
                     }
-                    if (!eventToUpdate.locCornerNW || eventToUpdate.locCornerNW.length === 0) {
+                    if (!eventToUpdate.locCornerNW || eventToUpdate.locCornerNW.length === 0
+                      || !eventToUpdate.locCornerNW[0] || !eventToUpdate.locCornerNW[1]) {
                       fieldsToUpdate.locCornerNW = [qRData.mapCorners.nw.lat,
                         qRData.mapCorners.nw.long];
                     }
-                    if (!eventToUpdate.locCornerNE || eventToUpdate.locCornerNE.length === 0) {
+                    if (!eventToUpdate.locCornerNE || eventToUpdate.locCornerNE.length === 0
+                      || !eventToUpdate.locCornerNE[0] || !eventToUpdate.locCornerNE[1]) {
                       fieldsToUpdate.locCornerNE = [qRData.mapCorners.ne.lat,
                         qRData.mapCorners.ne.long];
                     }
-                    if (!eventToUpdate.locCornerSE || eventToUpdate.locCornerSE.length === 0) {
+                    if (!eventToUpdate.locCornerSE || eventToUpdate.locCornerSE.length === 0
+                      || !eventToUpdate.locCornerSE[0] || !eventToUpdate.locCornerSE[1]) {
                       fieldsToUpdate.locCornerSE = [qRData.mapCorners.se.lat,
                         qRData.mapCorners.se.long];
                     }
