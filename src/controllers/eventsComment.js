@@ -2,7 +2,7 @@ const { ObjectID } = require('mongodb');
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('../services/activityLog');
+const { recordActivity } = require('../services/activity');
 
 // app.post('/events/:eventid/comments/:userid', requireAuth, Events.postComment);
 // Post a new comment against the specified user's map in this event
@@ -80,7 +80,7 @@ const postComment = (req, res) => {
           .find(runner => runner.user._id.toString() === userid);
         const commentsToSend = runnerToSend.comments;
         const newCommentId = commentsToSend[(commentsToSend.length - 1)]._id;
-        activityLog({
+        recordActivity({
           actionType: 'COMMENT_POSTED',
           actionBy: req.user._id,
           event: eventid,
@@ -180,7 +180,7 @@ const updateComment = (req, res) => {
       .select('-active -__v')
       .then((updatedEvent) => {
         logger('success')(`Updated comment in ${updatedEvent.name} (${updatedEvent.date}).`);
-        activityLog({
+        recordActivity({
           actionType: 'COMMENT_UPDATED',
           actionBy: req.user._id,
           event: eventid,
@@ -267,7 +267,7 @@ const deleteComment = (req, res) => {
       .select('-active -__v')
       .then((updatedEvent) => {
         logger('success')(`Deleted comment in ${updatedEvent.name} (${updatedEvent.date}).`);
-        activityLog({
+        recordActivity({
           actionType: 'COMMENT_DELETED',
           actionBy: req.user._id,
           event: eventid,

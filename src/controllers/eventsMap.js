@@ -6,7 +6,7 @@ const { getQRData, calculateDistance } = require('../services/parseQR');
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('../services/activityLog');
+const { recordActivity } = require('../services/activity');
 const createRouteOverlay = require('../services/createRouteOverlay');
 
 // upload a scanned map to the specified event for user :userid
@@ -246,7 +246,7 @@ const postMap = (req, res) => {
                     .then((updatedEvent) => {
                       // console.log('updatedEvent:', updatedEvent);
                       logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
-                      activityLog({
+                      recordActivity({
                         actionType: 'EVENT_MAP_UPLOADED',
                         actionBy: req.user._id,
                         event: eventid,
@@ -399,7 +399,7 @@ const deleteMap = (req, res) => {
         .select('-active -__v')
         .then((updatedEvent) => {
           logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
-          activityLog({
+          recordActivity({
             actionType: 'EVENT_MAP_DELETED',
             actionBy: req.user._id,
             event: eventid,

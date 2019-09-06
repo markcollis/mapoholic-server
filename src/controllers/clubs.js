@@ -1,30 +1,19 @@
 const { ObjectID } = require('mongodb');
-const mongoose = require('mongoose');
-const fetch = require('node-fetch');
-const Club = require('../models/club');
-const User = require('../models/user');
-const Event = require('../models/oevent');
+
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('../services/activityLog');
+const { recordActivity } = require('../services/activity');
 const { validateUserId } = require('../services/validateIds');
+const {
+  createClubRecord,
+  deleteClubById,
+  getClubById,
+  getClubRecords,
+  getOrisClubData,
+  updateClubById,
+} = require('../services/clubServices');
 
 // *** /clubs routes ***  [Club model]
-
-// helper function to get ORIS club data - returns a Promise
-const getOrisClubData = (clubAbbr) => {
-  const ORIS_API_GETCLUB = 'https://oris.orientacnisporty.cz/API/?format=json&method=getClub';
-  return fetch(`${ORIS_API_GETCLUB}&id=${clubAbbr}`)
-    .then(response => response.json())
-    .then((json) => {
-      // console.log('Response from ORIS:', json);
-      return json.Data;
-    })
-    .catch((orisErr) => {
-      logger('error')(`ORIS API error: ${orisErr.message}. Create operation may proceed.`);
-      // don't send an HTTP error response, the club can still be created
-    });
-};
 
 // create a club
 // autopopulate Czech clubs from abbreviation
@@ -71,30 +60,18 @@ const createClub = (req, res) => {
       // console.log('Nothing retrieved from ORIS.');
     }
   }).then(() => {
-    // console.log('fieldsToCreate:', fieldsToCreate);
-    const newClub = new Club(fieldsToCreate);
-    newClub.save()
-      .then((createdClub) => {
-        return createdClub.populate('owner', '_id displayName').execPopulate();
-      })
-      .then((createdClub) => {
-        logger('success')(`${createdClub.shortName} created by ${req.user.email}.`);
-        activityLog({
-          actionType: 'CLUB_CREATED',
-          actionBy: creatorId,
-          club: createdClub._id,
-        });
-        return res.status(200).send(createdClub);
-      })
-      .catch((err) => {
-        if (err.message.slice(0, 6) === 'E11000') {
-          const duplicate = err.message.split('"')[1];
-          logger('error')(`Error creating club: duplicate value ${duplicate}.`);
-          return res.status(400).send({ error: `${duplicate} is already in use.` });
-        }
-        logger('error')('Error creating club:', err.message);
-        return res.status(400).send({ error: err.message });
+    createClubRecord(fieldsToCreate).then((createdClub) => {
+      logger('success')(`${createdClub.shortName} created by ${req.user.email}.`);
+      recordActivity({
+        actionType: 'CLUB_CREATED',
+        actionBy: creatorId,
+        club: createdClub._id,
       });
+      return res.status(200).send(createdClub);
+    }).catch((err) => {
+      logger('error')('Error creating club:', err.message);
+      return res.status(400).send({ error: err.message });
+    });
   });
 };
 
@@ -119,18 +96,13 @@ const getClubList = (req, res) => {
       }
     }
   });
-  // console.log('clubSearchCriteria:', JSON.stringify(clubSearchCriteria));
-  Club.find(clubSearchCriteria)
-    .populate('owner', '_id displayName')
-    .select('-active -__v')
-    .then((clubs) => {
-      logger('success')(`Returned list of ${clubs.length} club(s).`);
-      return res.status(200).send(clubs);
-    })
-    .catch((err) => {
-      logger('error')('Error getting list of clubs:', err.message);
-      return res.status(400).send(err.message);
-    });
+  getClubRecords(clubSearchCriteria).then((clubs) => {
+    logger('success')(`Returned list of ${clubs.length} club(s).`);
+    return res.status(200).send(clubs);
+  }).catch((err) => {
+    logger('error')('Error getting list of clubs:', err.message);
+    return res.status(400).send(err.message);
+  });
 };
 
 const updateClub = (req, res) => {
@@ -147,7 +119,7 @@ const updateClub = (req, res) => {
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   // now need to check database to identify owner
-  return Club.findById(id).then((clubToUpdate) => {
+  return getClubById(id).then((clubToUpdate) => {
     if (!clubToUpdate) {
       logger('error')('Error updating club: no matching club found.');
       return res.status(404).send({ error: 'Club could not be found.' });
@@ -183,7 +155,6 @@ const updateClub = (req, res) => {
         return checkOris.then((orisData) => {
           if (orisData) {
             logger('info')(`Retrieved ORIS data for ${orisData.Abbr}.`);
-            // console.log('orisClubData:', orisData);
             fieldsToUpdate.orisId = orisData.ID; // only available through API
             if (!fieldsToUpdate.fullName || fieldsToUpdate.fullName === '') {
               fieldsToUpdate.fullName = orisData.Name; // use ORIS if not provided
@@ -192,37 +163,31 @@ const updateClub = (req, res) => {
               fieldsToUpdate.website = orisData.WWW; // use ORIS if not provided
             }
           } else {
-            // console.log('Nothing retrieved from ORIS.');
+            logger('info')(`No ORIS data found for ${fieldsToUpdate.shortName}.`);
           }
         }).then(() => {
-          // console.log('fieldsToUpdate:', fieldsToUpdate);
           const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
-          // console.log('fields to be updated:', numberOfFieldsToUpdate);
           if (numberOfFieldsToUpdate === 0) {
             logger('error')('Update club error: no valid fields to update.');
             return res.status(400).send({ error: 'No valid fields to update.' });
           }
-          return Club.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
-            .populate('owner', '_id displayName')
-            .select('-active -__v')
-            .then((updatedClub) => {
-              logger('success')(`${updatedClub.shortName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-              activityLog({
-                actionType: 'CLUB_UPDATED',
-                actionBy: req.user._id,
-                club: id,
-              });
-              return res.status(200).send(updatedClub);
-            })
-            .catch((err) => {
-              if (err.message.slice(0, 6) === 'E11000') {
-                const duplicate = err.message.split('"')[1];
-                logger('error')(`Error updating club: duplicate value ${duplicate}.`);
-                return res.status(400).send({ error: `${duplicate} is already in use.` });
-              }
-              logger('error')('Error updating user:', err.message);
-              return res.status(400).send({ error: err.message });
+          return updateClubById(id, fieldsToUpdate).then((updatedClub) => {
+            logger('success')(`${updatedClub.shortName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+            recordActivity({
+              actionType: 'CLUB_UPDATED',
+              actionBy: req.user._id,
+              club: id,
             });
+            return res.status(200).send(updatedClub);
+          }).catch((err) => {
+            if (err.message.slice(0, 6) === 'E11000') {
+              const duplicate = err.message.split('"')[1];
+              logger('error')(`Error updating club: duplicate value ${duplicate}.`);
+              return res.status(400).send({ error: `${duplicate} is already in use.` });
+            }
+            logger('error')('Error updating user:', err.message);
+            return res.status(400).send({ error: err.message });
+          });
         });
       });
     }
@@ -240,52 +205,30 @@ const deleteClub = (req, res) => {
     logger('error')('Error deleting club: invalid club id.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  return Club.findById(id).then((clubToDelete) => {
+  return getClubById(id).then((clubToDelete) => {
     if (!clubToDelete) {
       logger('error')('Error deleting club: no matching club found.');
       return res.status(404).send({ error: 'Club could not be found.' });
     }
     const allowedToDelete = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === clubToDelete.owner.toString()));
-    // console.log('allowedToDelete', allowedToDelete, clubToDelete.shortName);
     if (allowedToDelete) {
-      const now = new Date();
-      const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
-        .concat((`0${(now.getMonth() + 1)}`).slice(-2))
-        .concat(now.getFullYear().toString())
-        .concat('@')
-        .concat((`0${now.getHours()}`).slice(-2))
-        .concat((`0${now.getMinutes()}`).slice(-2));
-      const newShortName = `${clubToDelete.shortName} ${deletedAt}`;
-      return Club.findByIdAndUpdate(id,
-        { $set: { active: false, shortName: newShortName } },
-        { new: true })
-        .then((deletedClub) => {
-          // now remove all references from User.memberOf
-          User.updateMany({ memberOf: mongoose.Types.ObjectId(id) },
-            { $pull: { memberOf: mongoose.Types.ObjectId(id) } })
-            .then(() => {
-              // now remove all references from Event.organisedBy
-              Event.updateMany({ organisedBy: mongoose.Types.ObjectId(id) },
-                { $pull: { organisedBy: mongoose.Types.ObjectId(id) } })
-                .then(() => {
-                  logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
-                  activityLog({
-                    actionType: 'CLUB_DELETED',
-                    actionBy: req.user._id,
-                    club: id,
-                  });
-                  return res.status(200).send(deletedClub);
-                });
-            });
-        })
-        .catch((err) => {
-          logger('error')('Error deleting club:', err.message);
-          return res.status(400).send({ error: err.message });
+      deleteClubById(id).then((deletedClub) => {
+        logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
+        recordActivity({
+          actionType: 'CLUB_DELETED',
+          actionBy: req.user._id,
+          club: id,
         });
+        return res.status(200).send(deletedClub);
+      }).catch((err) => {
+        logger('error')('Error deleting club:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
+    } else {
+      logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
+      return res.status(401).send({ error: 'Not allowed to delete this club.' });
     }
-    logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
-    return res.status(401).send({ error: 'Not allowed to delete this club.' });
   });
 };
 
@@ -294,30 +237,4 @@ module.exports = {
   getClubList,
   updateClub,
   deleteClub,
-  getOrisClubData, // used in events controller not in router
 };
-
-// Redundant - getClubList provides the same information
-// const getClubById = (req, res) => {
-//   logReq(req);
-//   const { id } = req.params;
-//   if (!ObjectID.isValid(id)) {
-//     logger('error')('Error getting club details: invalid club id.');
-//     return res.status(400).send({ error: 'Invalid ID.' });
-//   }
-//   return Club.findOne({ _id: id, active: true })
-//     .populate('owner', '_id displayName')
-//     .select('-active -__v')
-//     .then((club) => {
-//       if (!club) {
-//         logger('error')('Error getting club details: no club found.');
-//         return res.status(404).send({ error: 'No club found.' });
-//       }
-//       logger('success')(`Returned club details for ${club.shortName}.`);
-//       return res.status(200).send(club);
-//     })
-//     .catch((err) => {
-//       logger('error')('Error getting club details:', err.message);
-//       return res.status(400).send({ error: err.message });
-//     });
-// };

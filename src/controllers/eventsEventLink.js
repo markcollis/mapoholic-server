@@ -4,7 +4,7 @@ const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('../services/activityLog');
+const { recordActivity } = require('../services/activity');
 const {
   validateEventIds,
 } = require('../services/validateIds');
@@ -53,7 +53,7 @@ const createEventLink = (req, res) => {
               { new: true })
               .then(() => {
                 logger('success')(`${savedLinkedEvent.displayName} created by ${req.user.email}.`);
-                activityLog({
+                recordActivity({
                   actionType: 'EVENT_LINK_CREATED',
                   actionBy: req.user._id,
                   linkedEvent: savedLinkedEvent._id,
@@ -149,7 +149,7 @@ const updateEventLink = (req, res) => {
                 { $pull: { linkedTo: mongoose.Types.ObjectId(updatedLinkedEvent._id) } })
                 .then(() => {
                   logger('success')(`${updatedLinkedEvent.displayName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-                  activityLog({
+                  recordActivity({
                     actionType: 'EVENT_LINK_UPDATED',
                     actionBy: req.user._id,
                     linkedEvent: eventlinkid,
@@ -189,7 +189,7 @@ const deleteEventLink = (req, res) => {
             { $pull: { linkedTo: mongoose.Types.ObjectId(linkedEventToDelete._id) } })
             .then(() => {
               logger('success')(`Successfully deleted event link ${linkedEventToDelete._id} (${linkedEventToDelete.displayName})`);
-              activityLog({
+              recordActivity({
                 actionType: 'EVENT_LINK_DELETED',
                 actionBy: req.user._id,
                 linkedEvent: eventlinkid,

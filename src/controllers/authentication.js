@@ -1,7 +1,7 @@
 const jwt = require('jwt-simple');
 const User = require('../models/user');
 const logger = require('../services/logger');
-const activityLog = require('../services/activityLog');
+const { recordActivity } = require('../services/activity');
 
 const tokenForUser = (user) => {
   const timestamp = new Date().getTime();
@@ -50,7 +50,7 @@ const signup = (req, res, next) => {
       if (saveUserErr) return next(saveUserErr);
       // return token if successful
       logger('success')(`New user created: ${savedUser._id} (${savedUser.email}).`);
-      activityLog({
+      recordActivity({
         actionType: 'USER_CREATED',
         actionBy: savedUser._id,
         user: savedUser._id,

@@ -8,7 +8,7 @@ const User = require('../models/user');
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('../services/activityLog');
+const { recordActivity } = require('../services/activity');
 const { validateClubIds } = require('../services/validateIds');
 
 // retrieve and format matching user list data
@@ -245,7 +245,7 @@ const updateUser = (req, res) => {
           .select('-password')
           .then((updatedUser) => {
             logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-            activityLog({
+            recordActivity({
               actionType: 'USER_UPDATED',
               actionBy: req.user._id,
               user: id,
@@ -309,7 +309,7 @@ const deleteUser = (req, res) => {
             { $set: { 'runners.$.visibility': 'private' } })
             .then(() => {
               logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
-              activityLog({
+              recordActivity({
                 actionType: 'USER_DELETED',
                 actionBy: req.user._id,
                 user: req.params.id,
@@ -368,7 +368,7 @@ const postProfileImage = (req, res) => {
           .then((updatedUser) => {
             // console.log('updatedUser', updatedUser);
             logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
-            activityLog({
+            recordActivity({
               actionType: 'USER_UPDATED',
               actionBy: req.user._id,
               user: req.params.id,

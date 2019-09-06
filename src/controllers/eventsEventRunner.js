@@ -3,7 +3,7 @@ const fetch = require('node-fetch');
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('../services/activityLog');
+const { recordActivity } = require('../services/activity');
 
 // add current user as a runner at the specified event
 const addEventRunner = (req, res) => {
@@ -96,7 +96,7 @@ const addEventRunner = (req, res) => {
           filteredEvent.runners = selectedRunners.filter(runner => runner);
         }
         logger('success')(`Added ${req.user.email} as runner to ${updatedEvent.name} (${updatedEvent.date}).`);
-        activityLog({
+        recordActivity({
           actionType: 'EVENT_RUNNER_ADDED',
           actionBy: req.user._id,
           event: eventid,
@@ -312,7 +312,7 @@ const updateEventRunner = (req, res) => {
         .select('-active -__v')
         .then((updatedEvent) => {
           logger('success')(`Updated ${req.user.email} in ${updatedEvent.name} (${updatedEvent.date}) (${numberOfFieldsToUpdate} field(s)).`);
-          activityLog({
+          recordActivity({
             actionType: 'EVENT_RUNNER_UPDATED',
             actionBy: req.user._id,
             event: eventid,
@@ -392,7 +392,7 @@ const deleteEventRunner = (req, res) => {
       .select('-active -__v')
       .then((updatedEvent) => {
         logger('success')(`Deleted runner from ${updatedEvent.name} (${updatedEvent.date}).`);
-        activityLog({
+        recordActivity({
           actionType: 'EVENT_RUNNER_DELETED',
           actionBy: req.user._id,
           event: eventid,
