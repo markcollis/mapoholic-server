@@ -1,11 +1,10 @@
-// activity log to support reporting of recent activity (add, delete or change)
+// log an activity in database to enable reporting of recent activity
 
 const Activity = require('../models/activity');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 
 module.exports = (activity) => {
   const activityToLog = { ...activity, timestamp: new Date() };
-  // console.log('activity to log:', activityToLog);
   const newActivity = new Activity(activityToLog);
   newActivity.save()
     .then((createdActivity) => {
@@ -18,6 +17,8 @@ module.exports = (activity) => {
       logger('error')('Error logging activity:', err.message);
     });
 };
+
+// Types of activity expected to be logged:
 
 // authentication
 //  USER_CREATED, user

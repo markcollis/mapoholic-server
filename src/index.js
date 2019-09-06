@@ -2,7 +2,7 @@
 require('dotenv').config(); // import environment variables from .env file
 const express = require('express'); // node.js web application framework
 const http = require('http');
-// const https = require('https'); // support for https connections (not needed)
+// const https = require('https'); // support for https connections (tested, not currently needed)
 const fs = require('fs'); // filesystem access
 const path = require('path'); // manage filesystem paths
 const bodyParser = require('body-parser'); // middleware: format responses
@@ -11,7 +11,7 @@ const cors = require('cors'); // middleware: support CORS requests
 
 const app = express(); // create an instance of express to use
 const router = require('./router'); // routes in seperate file
-const logger = require('./utils/logger'); // central control of logging
+const logger = require('./services/logger'); // central control of logging
 
 // configuration based on environment variables
 const port = process.env.PORT || 3090;
@@ -30,7 +30,7 @@ if (!process.env.JWT_SECRET) {
 // const httpsCert = process.env.HTTPS_CERT || './certs/localhost+1.pem';
 
 // Database setup
-require('./utils/db');
+require('./init/db');
 
 // App setup
 app.use(morgan('dev')); // middleware: logging framework for requests

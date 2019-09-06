@@ -1,14 +1,15 @@
 // Export routing file that will be used in index.js
 //   where app is the express instance.
 const passport = require('passport');
+require('./init/passport'); // passport config
+
 const Activity = require('./controllers/activity');
 const Authentication = require('./controllers/authentication');
 const Users = require('./controllers/users');
-const images = require('./utils/images');
+const Images = require('./controllers/images');
 const Clubs = require('./controllers/clubs');
 const Events = require('./controllers/events');
 
-require('./services/passport'); // passport config
 
 // each route should have one of these three middleware options to set req.user
 const requireAuth = passport.authenticate('jwt', { session: false }); // bearer token in header
@@ -28,7 +29,7 @@ module.exports = (app) => {
   app.post('/users/:id/password', requireAuth, Authentication.passwordChange);
   // upload profile image for specified user
   app.post('/users/:id/profileImage', requireAuth, Users.validateProfileImagePermission,
-    images.uploadImage.single('upload'), Users.postProfileImage, images.errorHandler);
+    Images.uploadImage.single('upload'), Users.postProfileImage, Images.errorHandler);
   // retrieve a list of all users (ids) matching specified criteria
   app.get('/users', requireAuth, Users.getUserList);
   app.get('/users/public', publicRoute, Users.getUserList);
@@ -70,8 +71,8 @@ module.exports = (app) => {
   // :maptype is either course or route
   // :maptitle is the label to use for each part of multi-part maps (optional, default 'map')
   app.post('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle?', requireAuth,
-    Events.validateMapUploadPermission, images.uploadMap.single('upload'),
-    images.convertPNG, Events.postMap, images.errorHandler);
+    Events.validateMapUploadPermission, Images.uploadMap.single('upload'),
+    Images.convertPNG, Events.postMap, Images.errorHandler);
   // Post a new comment against the specified user's map in this event
   app.post('/events/:eventid/comments/:userid', requireAuth, Events.postComment);
   // create a new event using oris data *eventid is ORIS event id*

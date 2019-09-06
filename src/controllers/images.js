@@ -1,7 +1,7 @@
 const fs = require('fs');
 const multer = require('multer'); // support for image upload
 const sharp = require('sharp'); // convert PNG to JPG
-const logger = require('./logger');
+const logger = require('../services/logger');
 
 // multer setup for uploading profile images and maps
 const profileImageStorage = multer.diskStorage({
@@ -72,19 +72,19 @@ const convertPNG = (req, res, next) => {
   }
   const { path } = req.file;
   if (path.slice(-3) === 'png') {
-    console.log('PNG file uploaded, want to convert it to JPG');
+    // console.log('PNG file uploaded, want to convert it to JPG');
     const newPath = path.slice(0, -3).concat('jpg');
     return sharp(path).toFormat('jpeg').toFile(newPath).then((info) => {
-      console.log('File converted successfully');
+      // console.log('File converted successfully');
       req.file.path = newPath; // point eventMap at new file
       fs.unlink(path, (deleteErr) => {
-        console.log('Error deleting PNG:', deleteErr);
+        // console.log('Error deleting PNG:', deleteErr);
         if (deleteErr) throw deleteErr;
       });
       return next();
     })
       .catch((conversionErr) => {
-        console.log('Error in file conversion:', conversionErr);
+        // console.log('Error in file conversion:', conversionErr);
         throw conversionErr;
       });
   }

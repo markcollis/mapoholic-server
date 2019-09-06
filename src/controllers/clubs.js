@@ -4,10 +4,10 @@ const fetch = require('node-fetch');
 const Club = require('../models/club');
 const User = require('../models/user');
 const Event = require('../models/oevent');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('./activityLog');
-const { validateUserId } = require('./validateIds');
+const activityLog = require('../services/activityLog');
+const { validateUserId } = require('../services/validateIds');
 
 // *** /clubs routes ***  [Club model]
 

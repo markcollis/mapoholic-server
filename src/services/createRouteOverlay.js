@@ -26,11 +26,11 @@ const isDifferent = (routeData, courseData, position, overlayThreshold) => {
 // cut down version that returns an overlay (new PNG object)
 // returns null rather than error if unable to produce one
 const createRouteOverlay = async (routeFilename, courseFilename, overlayThreshold = 63) => {
-  const startTime = new Date().getTime();
+  // const startTime = new Date().getTime();
   return Promise.all([readFileAsync(routeFilename), readFileAsync(courseFilename)])
     .then(([routeFile, courseFile]) => {
-      const readTime = new Date().getTime();
-      console.log('files read time:', (readTime - startTime) / 1000);
+      // const readTime = new Date().getTime();
+      // console.log('files read time:', (readTime - startTime) / 1000);
       const routeImg = JPEG.decode(routeFile);
       const courseImg = JPEG.decode(courseFile);
       const { width, height } = routeImg;
@@ -41,7 +41,7 @@ const createRouteOverlay = async (routeFilename, courseFilename, overlayThreshol
 
       // validation: are images the same size?
       if (routeData.length !== courseData.length) {
-        console.log('No overlay, image sizes do not match.');
+        // console.log('No overlay, image sizes do not match.');
         return null;
       }
 
@@ -61,17 +61,18 @@ const createRouteOverlay = async (routeFilename, courseFilename, overlayThreshol
           }
         }
       }
-      const endTime = new Date().getTime();
-      console.log('different pixels:', different);
-      console.log('finish time:', (endTime - startTime) / 1000);
+      // const endTime = new Date().getTime();
+      // console.log('different pixels:', different);
+      // console.log('finish time:', (endTime - startTime) / 1000);
       if (different === 0) {
-        console.log('No overlay, images are identical.');
+        // console.log('No overlay, images are identical.');
         return null;
       }
       return overlay;
     })
-    .catch((err) => {
-      console.log('No overlay, error:', err.message);
+    .catch(() => {
+      // .catch((err) => {
+      // console.log('No overlay, error:', err.message);
       return null;
     });
 };

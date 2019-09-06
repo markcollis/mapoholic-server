@@ -2,12 +2,12 @@ const { ObjectID } = require('mongodb');
 const mongoose = require('mongoose');
 const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('./activityLog');
+const activityLog = require('../services/activityLog');
 const {
   validateEventIds,
-} = require('./validateIds');
+} = require('../services/validateIds');
 
 // create a new event linkage between the specified events
 const createEventLink = (req, res) => {

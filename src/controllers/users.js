@@ -6,10 +6,10 @@ const fs = require('fs');
 const path = require('path');
 const User = require('../models/user');
 const Event = require('../models/oevent');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('./activityLog');
-const { validateClubIds } = require('./validateIds');
+const activityLog = require('../services/activityLog');
+const { validateClubIds } = require('../services/validateIds');
 
 // retrieve and format matching user list data
 const findAndReturnUserList = (userSearchCriteria) => {

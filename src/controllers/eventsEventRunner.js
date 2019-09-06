@@ -1,9 +1,9 @@
 const { ObjectID } = require('mongodb');
 const fetch = require('node-fetch');
 const Event = require('../models/oevent');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('./activityLog');
+const activityLog = require('../services/activityLog');
 
 // add current user as a runner at the specified event
 const addEventRunner = (req, res) => {

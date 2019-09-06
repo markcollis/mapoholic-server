@@ -4,14 +4,14 @@ const fetch = require('node-fetch');
 const Club = require('../models/club');
 const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('./activityLog');
+const activityLog = require('../services/activityLog');
 const {
   validateClubIds,
   validateLinkedEventIds,
   validateUserId,
-} = require('./validateIds');
+} = require('../services/validateIds');
 const { getOrisClubData } = require('./clubs');
 
 // POST routes

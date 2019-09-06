@@ -1,7 +1,6 @@
 const { ObjectID } = require('mongodb');
-// const mongoose = require('mongoose');
 const Activity = require('../models/activity');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 const logReq = require('./logReq');
 
 // retrieve a list of recent activity matching specified criteria
@@ -9,11 +8,9 @@ const getActivityLog = (req, res) => {
   logReq(req);
   const activitySearchCriteria = {};
   const listLength = req.query.number;
-  // console.log('list length:', listLength);
   // support filtering using query strings
   const validFilters = ['actionType', 'actionBy', 'club', 'comment', 'event', 'eventRunner', 'linkedEvent', 'user'];
   Object.keys(req.query).forEach((key) => {
-    // console.log('filtering on', key, req.query[key]);
     if (validFilters.includes(key)) {
       if (key === 'actionType') {
         activitySearchCriteria.actionType = req.query.actionType;
@@ -21,12 +18,10 @@ const getActivityLog = (req, res) => {
         // needs additional check to avoid ObjectID cast error
         activitySearchCriteria[key] = req.query[key];
       } else {
-        // console.log('invalid value for', key, req.query[key]);
         activitySearchCriteria[key] = null;
       }
     }
   });
-  // console.log('clubSearchCriteria:', JSON.stringify(clubSearchCriteria));
   Activity.find(activitySearchCriteria)
     // 1. populate relevant data
     .populate('actionBy', '_id displayName visibility memberOf active')
@@ -62,16 +57,11 @@ const getActivityLog = (req, res) => {
           if (actionType === 'EVENT_CREATED') include = true;
           if (actionType === 'EVENT_UPDATED') include = true;
           if (eventRunner) {
-            // console.log('eventRunner, event:', eventRunner, event);
             const stillEventRunner = event.runners.find((runner) => {
               return runner.user.toString() === eventRunner._id.toString();
             });
             const runnerVisibility = (stillEventRunner)
               ? stillEventRunner.visibility : 'private'; // default if we don't know
-            // const runnerVisibility = event.runners.find((runner) => {
-            //   return runner.user.toString() === eventRunner._id.toString();
-            // }).visibility;
-            // console.log('runnerVisibility:', runnerVisibility);
             if (runnerVisibility === 'public' || runnerVisibility === 'all') include = true;
             if (runnerVisibility === 'club') {
               if (eventRunner.memberOf && eventRunner.memberOf.length > 0) {

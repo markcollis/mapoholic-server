@@ -2,7 +2,7 @@ const passport = require('passport');
 const LocalStrategy = require('passport-local');
 const { Strategy, ExtractJwt } = require('passport-jwt');
 const User = require('../models/user');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 
 // create local strategy (email/password)
 const localOptions = { usernameField: 'email' };

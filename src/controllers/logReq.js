@@ -1,5 +1,5 @@
 // detailed logging of request to use across all controllers during development
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 
 const ENABLE = true; // turn on/off completely
 

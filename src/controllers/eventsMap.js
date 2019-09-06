@@ -2,13 +2,12 @@ const { ObjectID } = require('mongodb');
 const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
-// const { getQRData, calculateDistance, projectPoint } = require('../utils/parseQR');
-const { getQRData, calculateDistance } = require('../utils/parseQR');
+const { getQRData, calculateDistance } = require('../services/parseQR');
 const Event = require('../models/oevent');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 const logReq = require('./logReq');
-const activityLog = require('./activityLog');
-const createRouteOverlay = require('../utils/createRouteOverlay');
+const activityLog = require('../services/activityLog');
+const createRouteOverlay = require('../services/createRouteOverlay');
 
 // upload a scanned map to the specified event for user :userid
 // :maptype is either course or route

@@ -1,5 +1,5 @@
 const mongoose = require('mongoose'); // manage connections to MongoDB
-const logger = require('./logger');
+const logger = require('../services/logger');
 
 mongoose.set('runValidators', true);
 mongoose.connect(process.env.MONGODB_URI, {

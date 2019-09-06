@@ -7,7 +7,7 @@ const User = require('../models/user');
 const Club = require('../models/club');
 const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
-const logger = require('../utils/logger');
+const logger = require('../services/logger');
 
 // returns a Promise that resolves to an array of the valid IDs in the input array
 const validateClubIds = (candidateClubIds) => {
