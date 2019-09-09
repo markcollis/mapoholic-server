@@ -1,43 +1,19 @@
 const { ObjectID } = require('mongodb');
-const mongoose = require('mongoose');
 const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 
-const User = require('../models/user');
-const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
 const { recordActivity } = require('../services/activityServices');
 const { validateClubIds } = require('../services/validateIds');
 const { getOrisUserId } = require('../services/orisAPI');
-
-// retrieve and format matching user list data
-const findAndReturnUserList = (userSearchCriteria) => {
-  // console.log('userSearchCriteria:', JSON.stringify(userSearchCriteria));
-  return User.find(userSearchCriteria)
-    .populate('memberOf', 'shortName')
-    .select('-password')
-    .then((profiles) => {
-      if (profiles.length === 0) return [];
-      // reformat into short summary of key data
-      return profiles.map((profile) => {
-        // const clubList = (profile.memberOf.length > 0)
-        //   ? profile.memberOf.map(club => club.shortName)
-        //   : [];
-        const userSummary = {
-          _id: profile._id,
-          displayName: profile.displayName,
-          fullName: profile.fullName,
-          memberOf: profile.memberOf,
-          profileImage: profile.profileImage || '',
-          role: profile.role,
-          joined: profile.createdAt,
-        };
-        return userSummary;
-      });
-    });
-};
+const {
+  deleteUserById,
+  getUserDetailsById,
+  getUserRecords,
+  updateUserById,
+} = require('../services/userServices');
 
 // retrieve a list of all users (incl ids) matching specified criteria
 const getUserList = (req, res) => {
@@ -71,14 +47,13 @@ const getUserList = (req, res) => {
       { user: req.user._id },
     ];
     const requestorClubs = req.user.memberOf.map(club => club._id.toString());
-    // console.log('requestorClubs', requestorClubs);
     if (requestorClubs.length > 0) {
       requestorClubs.forEach((club) => {
         userSearchCriteria.$or.push({ visibility: 'club', memberOf: club });
       });
     }
   }
-  findAndReturnUserList(userSearchCriteria).then((userList) => {
+  getUserRecords(userSearchCriteria).then((userList) => {
     logger('success')(`Returned list of ${userList.length} user(s).`);
     return res.status(200).send(userList);
   }, (err) => {
@@ -96,9 +71,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
   const requestorClubs = (requestorRole === 'anonymous')
     ? null
     : requestingUser.memberOf.map(club => club._id.toString());
-  return User.findOne({ _id: userId, active: true })
-    .populate('memberOf')
-    .select('-password -active -__v')
+  return getUserDetailsById(userId)
     .then((profile) => {
       if (!profile) return { searchError: true };
       const { visibility, _id, memberOf } = profile;
@@ -207,14 +180,12 @@ const updateUser = (req, res) => {
     }
   }).then(() => {
     // custom check on regNumber if it appears to be a valid Czech code
-    // console.log('regNumber:', req.body.regNumber);
     const checkOris = (req.body.regNumber && req.body.regNumber.match(/([A-Z]|[0-9]){2}[A-Z][0-9]{4}/))
       ? getOrisUserId(req.body.regNumber)
       : Promise.resolve(false);
     return checkOris.then((orisId) => {
       if (orisId) {
         logger('info')(`Setting ORIS id for ${id} to ${orisId}.`);
-        // console.log('orisId to update', orisId);
         fieldsToUpdate.orisId = orisId;
       }
     }).then(() => {
@@ -226,27 +197,23 @@ const updateUser = (req, res) => {
       const allowedToUpdate = ((requestorRole === 'admin')
         || (requestorRole === 'standard' && requestorId === id));
       if (allowedToUpdate) {
-        return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
-          .populate('memberOf', 'shortName')
-          .select('-password')
-          .then((updatedUser) => {
-            logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-            recordActivity({
-              actionType: 'USER_UPDATED',
-              actionBy: req.user._id,
-              user: id,
-            });
-            return res.status(200).send(updatedUser);
-          })
-          .catch((err) => {
-            if (err.message.slice(0, 6) === 'E11000') {
-              const duplicate = err.message.split('"')[1];
-              logger('error')(`Error updating user: duplicate value ${duplicate}.`);
-              return res.status(400).send({ error: `${duplicate} is already in use.` });
-            }
-            logger('error')('Error updating user:', err.message);
-            return res.status(400).send({ error: err.message });
+        return updateUserById(id, fieldsToUpdate).then((updatedUser) => {
+          logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+          recordActivity({
+            actionType: 'USER_UPDATED',
+            actionBy: req.user._id,
+            user: id,
           });
+          return res.status(200).send(updatedUser);
+        }).catch((err) => {
+          if (err.message.slice(0, 6) === 'E11000') {
+            const duplicate = err.message.split('"')[1];
+            logger('error')(`Error updating user: duplicate value ${duplicate}.`);
+            return res.status(400).send({ error: `${duplicate} is already in use.` });
+          }
+          logger('error')('Error updating user:', err.message);
+          return res.status(400).send({ error: err.message });
+        });
       }
       logger('error')(`Error: ${req.user.email} not allowed to update ${id}.`);
       return res.status(401).send({ error: 'Not allowed to update this user.' });
@@ -266,47 +233,18 @@ const deleteUser = (req, res) => {
   }
   const allowedToDelete = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === id));
-  // console.log('allowedToDelete', allowedToDelete);
   if (allowedToDelete) {
-    return User.findById(id).then((userToDelete) => {
-      if (!userToDelete) {
-        logger('error')('Error deleting user: no matching user found.');
-        return res.status(404).send({ error: 'User could not be found.' });
-      }
-      const now = new Date();
-      const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
-        .concat((`0${(now.getMonth() + 1)}`).slice(-2))
-        .concat(now.getFullYear().toString())
-        .concat('@')
-        .concat((`0${now.getHours()}`).slice(-2))
-        .concat((`0${now.getMinutes()}`).slice(-2));
-      const newEmail = `deleted${now.getTime()}${userToDelete.email}`;
-      const newDisplayName = `${userToDelete.displayName} ${deletedAt}`;
-      return User.findByIdAndUpdate(id,
-        { $set: { active: false, email: newEmail, displayName: newDisplayName } },
-        { new: true })
-        .select('-password')
-        .then((deletedUser) => {
-          // Consider all related records:
-          // 1. Owner of club and event records: leave as deleted user, only admin can see them.
-          // 2. Comment author: leave as deleted user, strip 'deleted' when retrieving comments?
-          // 3. Runner records of this user: set to 'private' so admin can retrieve if needed.
-          return Event.updateMany({ 'runners.user': mongoose.Types.ObjectId(id) },
-            { $set: { 'runners.$.visibility': 'private' } })
-            .then(() => {
-              logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
-              recordActivity({
-                actionType: 'USER_DELETED',
-                actionBy: req.user._id,
-                user: req.params.id,
-              });
-              return res.status(200).send(deletedUser);
-            });
-        })
-        .catch((err) => {
-          logger('error')('Error deleting user:', err.message);
-          return res.status(400).send({ error: err.message });
-        });
+    return deleteUserById(id).then((deletedUser) => {
+      logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
+      recordActivity({
+        actionType: 'USER_DELETED',
+        actionBy: req.user._id,
+        user: req.params.id,
+      });
+      return res.status(200).send(deletedUser);
+    }).catch((err) => {
+      logger('error')('Error deleting user:', err.message);
+      return res.status(400).send({ error: err.message });
     });
   }
   logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
@@ -330,29 +268,14 @@ const postProfileImage = (req, res) => {
     return res.status(400).send({ error: 'No profile image file attached.' });
   }
   const newFileLocation = path.join('images', 'avatars', req.file.path.split('/').pop());
-  // alt - simple move from upload to avatars
-  // return fs.rename(req.file.path, newFileLocation, (renameErr) => {
-  //   if (renameErr) throw renameErr;
   return fs.unlink(newFileLocation, () => {
-    // console.log('previous file deleted!');
-    //   return fs.rename(req.file.path, newFileLocation, (err) => {
-    //    sharp(newFileLocation).resize(200, 200).toFile(newFileLocation.concat('.temp'));
     return sharp(req.file.path)
       .resize(200, 200, { fit: 'contain', background: 'white' })
       .toFile(newFileLocation, (err) => {
         sharp.cache(false); // stops really confusing behaviour if changing more than once!
         if (err) throw err;
-        // const profileImageUrl = url.format({
-        //   protocol: req.protocol,
-        //   host: req.get('host'),
-        //   pathname: newFileLocation,
-        // });
-        return User.findByIdAndUpdate(req.params.id,
-          { $set: { profileImage: newFileLocation } },
-          { new: true })
-          .select('-password')
+        return updateUserById(req.params.id, { profileImage: newFileLocation })
           .then((updatedUser) => {
-            // console.log('updatedUser', updatedUser);
             logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
             recordActivity({
               actionType: 'USER_UPDATED',
@@ -372,43 +295,27 @@ const deleteProfileImage = (req, res) => {
   logReq(req);
   const allowedToDeleteProfileImage = ((req.user.role === 'admin')
   || (req.user.role === 'standard' && req.user._id.toString() === req.params.id.toString()));
-  // console.log('allowed?', allowedToDeleteProfileImage);
   if (!allowedToDeleteProfileImage) {
     logger('error')(`Error: ${req.user.email} not allowed to delete profile image for ${req.params.id}.`);
     return res.status(401).send({ error: 'Not allowed to delete profile image for this user.' });
   }
-  // fs.readdir('images/avatars', (err, files) => {
-  //   if (err) throw err;
-  //   console.log('listing files before delete:');
-  //   files.forEach(file => console.log(file));
-  // });
   // delete the reference to it in the user document
-  return User.findByIdAndUpdate(req.params.id, { $set: { profileImage: '' } }, { new: false })
-    .select('profileImage email')
-    .then((deletedUser) => {
-      // then delete the file
-      if (!deletedUser.profileImage) {
-        logger('error')(`Error: ${deletedUser.email} does not have a profile image.`);
-        return res.status(404).send({ error: `Error: ${deletedUser.email} does not have a profile image.` });
-      }
-      // console.log('deletedUser', deletedUser);
-      const fileToDelete = path.join('images', 'avatars', deletedUser.profileImage.split('/').pop());
-      // console.log('fileToDelete', fileToDelete);
-      return fs.unlink(fileToDelete, (err) => {
-        if (err) throw err;
-        // fs.readdir('images/avatars', (err2, files) => {
-        //   if (err2) throw err2;
-        //   console.log('listing files after delete:');
-        //   files.forEach(file => console.log(file));
-        // });
-        logger('success')(`Profile image deleted from ${deletedUser.email} by ${req.user.email}.`);
-        return res.status(200).send({ status: `Profile image deleted from ${deletedUser.email} by ${req.user.email}.` });
-      });
-    })
-    .catch((err) => {
-      logger('error')('Error deleting profile image:', err.message);
-      return res.status(400).send({ error: err.message });
+  return updateUserById(req.params.id, { profileImage: '' }).then((deletedUser) => {
+    // then delete the file
+    if (!deletedUser.profileImage) {
+      logger('error')(`Error: ${deletedUser.email} does not have a profile image.`);
+      return res.status(404).send({ error: `Error: ${deletedUser.email} does not have a profile image.` });
+    }
+    const fileToDelete = path.join('images', 'avatars', deletedUser.profileImage.split('/').pop());
+    return fs.unlink(fileToDelete, (err) => {
+      if (err) throw err;
+      logger('success')(`Profile image deleted from ${deletedUser.email} by ${req.user.email}.`);
+      return res.status(200).send({ status: `Profile image deleted from ${deletedUser.email} by ${req.user.email}.` });
     });
+  }).catch((err) => {
+    logger('error')('Error deleting profile image:', err.message);
+    return res.status(400).send({ error: err.message });
+  });
 };
 
 module.exports = {

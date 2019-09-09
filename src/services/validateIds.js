@@ -68,7 +68,7 @@ const validateUserId = (candidateUserId) => {
     }).then((valid) => {
       return valid;
     }).catch((validateErr) => {
-      logger('error')('Error validating club Ids:', validateErr.message);
+      logger('error')('Error validating user Id:', validateErr.message);
     });
   }
   return Promise.resolve(false);

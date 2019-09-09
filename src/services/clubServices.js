@@ -42,6 +42,8 @@ const updateClubById = (id, fieldsToUpdate) => {
 // delete a club record and references to it in Events and Users
 const deleteClubById = (id) => {
   return getClubById(id).then((clubToDelete) => {
+    // error handling!
+    if (!clubToDelete) throw new Error('Club could not be found.');
     const now = new Date();
     const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
       .concat((`0${(now.getMonth() + 1)}`).slice(-2))
