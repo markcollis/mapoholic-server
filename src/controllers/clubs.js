@@ -2,16 +2,16 @@ const { ObjectID } = require('mongodb');
 
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
 const { validateUserId } = require('../services/validateIds');
 const {
   createClubRecord,
   deleteClubById,
   getClubById,
   getClubRecords,
-  getOrisClubData,
   updateClubById,
 } = require('../services/clubServices');
+const { getOrisClubData } = require('../services/orisAPI');
 
 // *** /clubs routes ***  [Club model]
 
@@ -105,6 +105,7 @@ const getClubList = (req, res) => {
   });
 };
 
+// update a specific club's details
 const updateClub = (req, res) => {
   logReq(req);
   const { id } = req.params;
@@ -196,6 +197,7 @@ const updateClub = (req, res) => {
   });
 };
 
+// delete a specific club
 const deleteClub = (req, res) => {
   logReq(req);
   const { id } = req.params;
@@ -213,7 +215,7 @@ const deleteClub = (req, res) => {
     const allowedToDelete = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === clubToDelete.owner.toString()));
     if (allowedToDelete) {
-      deleteClubById(id).then((deletedClub) => {
+      return deleteClubById(id).then((deletedClub) => {
         logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
         recordActivity({
           actionType: 'CLUB_DELETED',
@@ -225,10 +227,9 @@ const deleteClub = (req, res) => {
         logger('error')('Error deleting club:', err.message);
         return res.status(400).send({ error: err.message });
       });
-    } else {
-      logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
-      return res.status(401).send({ error: 'Not allowed to delete this club.' });
     }
+    logger('error')(`Error: ${req.user.email} not allowed to delete ${id}.`);
+    return res.status(401).send({ error: 'Not allowed to delete this club.' });
   });
 };
 

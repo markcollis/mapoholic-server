@@ -1,15 +1,16 @@
 const { ObjectID } = require('mongodb');
 const mongoose = require('mongoose');
 const sharp = require('sharp');
-const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
+
 const User = require('../models/user');
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
 const { validateClubIds } = require('../services/validateIds');
+const { getOrisUserId } = require('../services/orisAPI');
 
 // retrieve and format matching user list data
 const findAndReturnUserList = (userSearchCriteria) => {
@@ -164,21 +165,6 @@ const getUserById = (req, res) => {
     });
 };
 
-// helper function to get ORIS user id - returns a Promise
-const getOrisId = (regNumber) => {
-  const ORIS_API_GETUSER = 'https://oris.orientacnisporty.cz/API/?format=json&method=getUser';
-  return fetch(`${ORIS_API_GETUSER}&rgnum=${regNumber}`)
-    .then(response => response.json())
-    .then((json) => {
-      // console.log('Response from ORIS:', json);
-      return json.Data.ID;
-    })
-    .catch((orisErr) => {
-      logger('error')(`ORIS API error: ${orisErr.message}. Rest of update may proceed.`);
-      // don't send an HTTP error response, the rest of the update may be fine
-    });
-};
-
 // update the specified user (multiple amendment not supported)
 const updateUser = (req, res) => {
   logReq(req);
@@ -223,7 +209,7 @@ const updateUser = (req, res) => {
     // custom check on regNumber if it appears to be a valid Czech code
     // console.log('regNumber:', req.body.regNumber);
     const checkOris = (req.body.regNumber && req.body.regNumber.match(/([A-Z]|[0-9]){2}[A-Z][0-9]{4}/))
-      ? getOrisId(req.body.regNumber)
+      ? getOrisUserId(req.body.regNumber)
       : Promise.resolve(false);
     return checkOris.then((orisId) => {
       if (orisId) {

@@ -1,10 +1,12 @@
+// Functions concerned with activity data (activity model)
+
 const Activity = require('../models/activity');
 const logger = require('../services/logger');
 
 const recordActivity = (activity) => {
   const activityToLog = { ...activity, timestamp: new Date() };
   const newActivity = new Activity(activityToLog);
-  newActivity.save()
+  return newActivity.save()
     .then((createdActivity) => {
       return createdActivity.populate('actionBy', '_id displayName').execPopulate();
     })
@@ -14,41 +16,40 @@ const recordActivity = (activity) => {
     .catch((err) => {
       logger('error')('Error logging activity:', err.message);
     });
-
-  // Types of activity expected to be logged:
-
-  // authentication
-  //  USER_CREATED, user
-  // clubs
-  //  CLUB_CREATED, club
-  //  CLUB_UPDATED, club
-  //  CLUB_DELETED, club
-  // eventsComment
-  //  COMMENT_POSTED, event, eventRunner, comment
-  //  COMMENT_UPDATED, event, eventRunner, comment
-  //  COMMENT_DELETED, event, eventRunner, comment
-  // eventsEvent
-  //  EVENT_CREATED, event
-  //  EVENT_UPDATED, event
-  //  EVENT_DELETED, event
-  // eventsEventLink
-  //   EVENT_LINK_CREATED, linkedEvent
-  //   EVENT_LINK_UPDATED, linkedEvent
-  //   EVENT_LINK_DELETED, linkedEvent
-  // eventsEventRunner
-  //   EVENT_RUNNER_ADDED, event, eventRunner
-  //   EVENT_RUNNER_UPDATED, event, eventRunner
-  //   EVENT_RUNNER_DELETED, event, eventRunner
-  // eventsMap
-  //   EVENT_MAP_UPLOADED, event, eventRunner
-  //   EVENT_MAP_DELETED, event, eventRunner
-  // users
-  //  USER_UPDATED, user (includes uploading profile image)
-  //  USER_DELETED, user
 };
 
-const getActivityList = (activitySearchCriteria, requestor, listLength) => {
-  return Activity.find(activitySearchCriteria)
+// *** Types of activity expected to be logged: ***
+// authentication
+//  USER_CREATED, user
+// clubs
+//  CLUB_CREATED, club
+//  CLUB_UPDATED, club
+//  CLUB_DELETED, club
+// eventsComment
+//  COMMENT_POSTED, event, eventRunner, comment
+//  COMMENT_UPDATED, event, eventRunner, comment
+//  COMMENT_DELETED, event, eventRunner, comment
+// eventsEvent
+//  EVENT_CREATED, event
+//  EVENT_UPDATED, event
+//  EVENT_DELETED, event
+// eventsEventLink
+//   EVENT_LINK_CREATED, linkedEvent
+//   EVENT_LINK_UPDATED, linkedEvent
+//   EVENT_LINK_DELETED, linkedEvent
+// eventsEventRunner
+//   EVENT_RUNNER_ADDED, event, eventRunner
+//   EVENT_RUNNER_UPDATED, event, eventRunner
+//   EVENT_RUNNER_DELETED, event, eventRunner
+// eventsMap
+//   EVENT_MAP_UPLOADED, event, eventRunner
+//   EVENT_MAP_DELETED, event, eventRunner
+// users
+//  USER_UPDATED, user (includes uploading profile image)
+//  USER_DELETED, user
+
+const getActivityList = (searchCriteria, requestor, listLength) => {
+  return Activity.find(searchCriteria)
     // 1. populate relevant data
     .populate('actionBy', '_id displayName visibility memberOf active')
     .populate('club', '_id shortName active')

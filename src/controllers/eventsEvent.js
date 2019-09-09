@@ -1,18 +1,23 @@
 const { ObjectID } = require('mongodb');
 const mongoose = require('mongoose');
-const fetch = require('node-fetch');
+
 const Club = require('../models/club');
 const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
+
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
 const {
   validateClubIds,
   validateLinkedEventIds,
   validateUserId,
 } = require('../services/validateIds');
-const { getOrisClubData } = require('./clubs');
+const {
+  getOrisClubData,
+  getOrisEventData,
+  getOrisEventList,
+} = require('../services/orisAPI');
 
 // POST routes
 // create an event (event level fields)
@@ -123,118 +128,110 @@ const createEvent = (req, res) => {
 // if a corresponding event is already in db, fill empty fields only
 const orisCreateEvent = (req, res) => {
   logReq(req);
-  const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
-  fetch(`${ORIS_API_GETEVENT}&id=${req.params.oriseventid}`)
-    .then(response => response.json())
-    .then((orisEvent) => {
-      const eventData = orisEvent.Data;
-      // console.log('eventData:', eventData);
-      if (eventData.Stages !== '0') {
-        const includedEvents = [eventData.Stage1, eventData.Stage2, eventData.Stage3,
-          eventData.Stage4, eventData.Stage5, eventData.Stage6, eventData.Stage7];
-        logger('error')('Error creating event from ORIS: multi-stage event parent');
-        return res.status(400).send({ error: `This ORIS event ID is the parent of a multi-stage event. The individual events are ${includedEvents}.` });
-      }
-      // ? later work once linkedEvent ready - add the following 'big picture' actions instead:
-      // 1. if Stages !== "0" create a linkedEvent record *instead* and then the events within
-      // it (Stage1, Stage2, ... Stage7 if not "0")
-      // 2. if ParentID !== null, create a linkedEvent record from that parent then the siblings
-      // ORIS Data.ParentID, Data.Stages, Data.Stage1-7 have relevant information
-      // also Data.Level.ShortName = ET (multi-day wrapper)
-      const disciplineAndSportToType = {
-        SP: 'Sprint', // ORIS SP Sprint Sprint
-        KT: 'Middle', // ORIS KT Middle Krátká trať
-        KL: 'Long', // ORIS KL Long Klasická trať
-        DT: 'Ultra-Long', // ORIS DT Ultra-Long Dlouhá trať
-        ST: 'Relay', // ORIS ST Relay Štafety
-        NOB: 'Night', // ORIS NOB Night Noční (not combined with distance in ORIS)
-        TeO: 'TempO', // ORIS TeO TempO TempO
-        MS: 'Mass start', // ORIS MS Mass start Hromadný start
-        MTBO: 'MTBO', // ORIS MTBO MTBO
-        LOB: 'SkiO', // ORIS LOB SkiO
-        TRAIL: 'TrailO', // ORIS TRAIL TrailO
-      };
-      const disciplineType = disciplineAndSportToType[eventData.Discipline.ShortName];
-      const sportType = disciplineAndSportToType[eventData.Sport.NameCZ];
-      const typesToCreate = [];
-      if (disciplineType) typesToCreate.push(disciplineType);
-      if (sportType) typesToCreate.push(disciplineType);
-      req.body = {
-        date: eventData.Date,
-        name: eventData.Name,
-        orisId: eventData.ID,
-        mapName: eventData.Map,
-        locPlace: eventData.Place,
-        locRegions: eventData.Region.split(', '),
-        locCountry: 'CZE',
-        locLat: parseFloat(eventData.GPSLat),
-        locLong: parseFloat(eventData.GPSLon),
-        types: typesToCreate,
-        website: `https://oris.orientacnisporty.cz/Zavod?id=${eventData.ID}`,
-        results: `https://oris.orientacnisporty.cz/Vysledky?id=${eventData.ID}`,
-        // always a valid page, whether or not there are any results stored
-      };
-      // console.log('Documents:', eventData.Documents);
-      // console.log('length:', eventData.Documents.length);
-      if (Object.keys(eventData.Documents).length > 0) {
-        Object.keys(eventData.Documents).forEach((documentRef) => {
-          // console.log('documentRef:', documentRef);
-          if (eventData.Documents[documentRef].SourceType.ID === '4') {
-            req.body.results = eventData.Documents[documentRef].Url;
-          }
+  getOrisEventData(req.params.oriseventid).then((eventData) => {
+    if (eventData.Stages !== '0') {
+      const includedEvents = [eventData.Stage1, eventData.Stage2, eventData.Stage3,
+        eventData.Stage4, eventData.Stage5, eventData.Stage6, eventData.Stage7];
+      logger('error')('Error creating event from ORIS: multi-stage event parent');
+      return res.status(400).send({ error: `This ORIS event ID is the parent of a multi-stage event. The individual events are ${includedEvents}.` });
+    }
+    // ? later work once linkedEvent ready - add the following 'big picture' actions instead:
+    // 1. if Stages !== "0" create a linkedEvent record *instead* and then the events within
+    // it (Stage1, Stage2, ... Stage7 if not "0")
+    // 2. if ParentID !== null, create a linkedEvent record from that parent then the siblings
+    // ORIS Data.ParentID, Data.Stages, Data.Stage1-7 have relevant information
+    // also Data.Level.ShortName = ET (multi-day wrapper)
+    const disciplineAndSportToType = {
+      SP: 'Sprint', // ORIS SP Sprint Sprint
+      KT: 'Middle', // ORIS KT Middle Krátká trať
+      KL: 'Long', // ORIS KL Long Klasická trať
+      DT: 'Ultra-Long', // ORIS DT Ultra-Long Dlouhá trať
+      ST: 'Relay', // ORIS ST Relay Štafety
+      NOB: 'Night', // ORIS NOB Night Noční (not combined with distance in ORIS)
+      TeO: 'TempO', // ORIS TeO TempO TempO
+      MS: 'Mass start', // ORIS MS Mass start Hromadný start
+      MTBO: 'MTBO', // ORIS MTBO MTBO
+      LOB: 'SkiO', // ORIS LOB SkiO
+      TRAIL: 'TrailO', // ORIS TRAIL TrailO
+    };
+    const disciplineType = disciplineAndSportToType[eventData.Discipline.ShortName];
+    const sportType = disciplineAndSportToType[eventData.Sport.NameCZ];
+    const typesToCreate = [];
+    if (disciplineType) typesToCreate.push(disciplineType);
+    if (sportType) typesToCreate.push(disciplineType);
+    req.body = {
+      date: eventData.Date,
+      name: eventData.Name,
+      orisId: eventData.ID,
+      mapName: eventData.Map,
+      locPlace: eventData.Place,
+      locRegions: eventData.Region.split(', '),
+      locCountry: 'CZE',
+      locLat: parseFloat(eventData.GPSLat),
+      locLong: parseFloat(eventData.GPSLon),
+      types: typesToCreate,
+      website: `https://oris.orientacnisporty.cz/Zavod?id=${eventData.ID}`,
+      results: `https://oris.orientacnisporty.cz/Vysledky?id=${eventData.ID}`,
+      // always a valid page, whether or not there are any results stored
+    };
+    // console.log('Documents:', eventData.Documents);
+    // console.log('length:', eventData.Documents.length);
+    if (Object.keys(eventData.Documents).length > 0) {
+      Object.keys(eventData.Documents).forEach((documentRef) => {
+        // console.log('documentRef:', documentRef);
+        if (eventData.Documents[documentRef].SourceType.ID === '4') {
+          req.body.results = eventData.Documents[documentRef].Url;
+        }
+      });
+    }
+    if (!['E', 'ET', 'S', 'OST'].includes(eventData.Level.ShortName)) {
+      req.body.tags = [eventData.Level.NameCZ];
+    }
+    // check to see if clubs exist and, if so, get their id; otherwise create them
+    const firstClub = eventData.Org1.Abbr;
+    const secondClub = eventData.Org2.Abbr || false;
+    return Club.find({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
+      // console.log('foundClubs:', foundClubs);
+      const foundClubsAbbr = foundClubs.map(foundClub => foundClub.shortName);
+      const foundClubsIds = foundClubs.map(foundClub => foundClub._id);
+      // console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
+      const clubOneNeeded = firstClub && !foundClubsAbbr.includes(firstClub);
+      const clubTwoNeeded = secondClub && !foundClubsAbbr.includes(secondClub);
+      const checkOrisOne = (clubOneNeeded) ? getOrisClubData(firstClub) : Promise.resolve(false);
+      const checkOrisTwo = (clubTwoNeeded) ? getOrisClubData(secondClub) : Promise.resolve(false);
+      Promise.all([checkOrisOne, checkOrisTwo]).then((orisData) => {
+        // console.log('orisData:', orisData);
+        const createClubs = orisData.map((clubData) => {
+          if (!clubData) return Promise.resolve(false);
+          // console.log('clubData:', clubData);
+          const fieldsToCreate = {
+            owner: req.user._id,
+            shortName: clubData.Abbr,
+            fullName: clubData.Name,
+            orisId: clubData.ID,
+            country: 'CZE',
+            website: clubData.WWW,
+          };
+          const newClub = new Club(fieldsToCreate);
+          return newClub.save().then(() => {
+            logger('success')(`${newClub.shortName} created by ${req.user.email} alongside event.`);
+            return newClub;
+          });
         });
-      }
-      if (!['E', 'ET', 'S', 'OST'].includes(eventData.Level.ShortName)) {
-        req.body.tags = [eventData.Level.NameCZ];
-      }
-      // check to see if clubs exist and, if so, get their id; otherwise create them
-      const firstClub = eventData.Org1.Abbr;
-      const secondClub = eventData.Org2.Abbr || false;
-      return Club.find({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
-        // console.log('foundClubs:', foundClubs);
-        const foundClubsAbbr = foundClubs.map(foundClub => foundClub.shortName);
-        const foundClubsIds = foundClubs.map(foundClub => foundClub._id);
-        // console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
-        const clubOneNeeded = firstClub && !foundClubsAbbr.includes(firstClub);
-        const clubTwoNeeded = secondClub && !foundClubsAbbr.includes(secondClub);
-        const checkOrisOne = (clubOneNeeded) ? getOrisClubData(firstClub) : Promise.resolve(false);
-        const checkOrisTwo = (clubTwoNeeded) ? getOrisClubData(secondClub) : Promise.resolve(false);
-        Promise.all([checkOrisOne, checkOrisTwo]).then((orisData) => {
-          // console.log('orisData:', orisData);
-          const createClubs = orisData.map((clubData) => {
-            if (!clubData) return Promise.resolve(false);
-            // console.log('clubData:', clubData);
-            const fieldsToCreate = {
-              owner: req.user._id,
-              shortName: clubData.Abbr,
-              fullName: clubData.Name,
-              orisId: clubData.ID,
-              country: 'CZE',
-              website: clubData.WWW,
-            };
-            const newClub = new Club(fieldsToCreate);
-            return newClub.save().then(() => {
-              logger('success')(`${newClub.shortName} created by ${req.user.email} alongside event.`);
-              return newClub;
-            });
-          });
-          Promise.all(createClubs).then((createdClubs) => {
-            const createdClubsIds = createdClubs.map(createdClub => createdClub._id);
-            // console.log('createdClubsIds', createdClubsIds);
-            // console.log('foundClubsIds', foundClubsIds);
-            req.body.organisedBy = createdClubsIds.concat(foundClubsIds);
-            return createEvent(req, res);
-          }).catch((err) => {
-            logger('error')('Error creating club alongside event:', err.message);
-            return res.status(400).send({ error: err.message });
-          });
+        Promise.all(createClubs).then((createdClubs) => {
+          const createdClubsIds = createdClubs.map(createdClub => createdClub._id);
+          req.body.organisedBy = createdClubsIds.concat(foundClubsIds);
+          return createEvent(req, res);
+        }).catch((err) => {
+          logger('error')('Error creating club alongside event:', err.message);
+          return res.status(400).send({ error: err.message });
         });
       });
-    })
-    .catch((orisErr) => {
-      logger('error')(`ORIS API error: ${orisErr.message}.`);
-      return res.status(400).send({ error: orisErr.message });
     });
+  }).catch((orisErr) => {
+    logger('error')(`ORIS API error: ${orisErr.message}.`);
+    return res.status(400).send({ error: orisErr.message });
+  });
 };
 
 // GET routes
@@ -256,59 +253,49 @@ const orisGetUserEvents = (req, res) => {
       dateFilter = dateFilter.concat(`&dateto=${req.query.dateto}`);
     } // note: basic input validation, doesn't check for leap years so 2019-02-29 would pass
   }
-  // console.log('dateFilter:', dateFilter);
-  const ORIS_API_GETUSEREVENTENTRIES = 'https://oris.orientacnisporty.cz/API/?format=json&method=getUserEventEntries';
-  return fetch(`${ORIS_API_GETUSEREVENTENTRIES}&userid=${req.user.orisId}${dateFilter}`)
-    .then(response => response.json())
-    .then((orisEventList) => {
-      const eventsEntered = Object.keys(orisEventList.Data).map((entry) => {
+  return getOrisEventList(req.user.orisId, dateFilter).then((eventListData) => {
+    const eventsEntered = Object.keys(eventListData).map((entry) => {
+      const eventDetails = {
+        orisEntryId: eventListData[entry].ID,
+        orisClassId: eventListData[entry].ClassID,
+        orisEventId: eventListData[entry].EventID,
+        date: eventListData[entry].EventDate,
+        class: eventListData[entry].ClassDesc,
+      };
+      return eventDetails;
+    });
+    const expandOrisDetails = eventsEntered.map(({ orisEventId }) => {
+      return getOrisEventData(orisEventId).then((eventData) => {
         const eventDetails = {
-          orisEntryId: orisEventList.Data[entry].ID,
-          orisClassId: orisEventList.Data[entry].ClassID,
-          orisEventId: orisEventList.Data[entry].EventID,
-          date: orisEventList.Data[entry].EventDate,
-          class: orisEventList.Data[entry].ClassDesc,
+          orisEventId: eventData.ID,
+          date: eventData.Date,
+          name: eventData.Name,
+          place: eventData.Place,
+          organiser: eventData.Org1.Abbr,
         };
+        if (eventData.Stages !== '0') {
+          const includedEvents = [eventData.Stage1, eventData.Stage2, eventData.Stage3,
+            eventData.Stage4, eventData.Stage5, eventData.Stage6, eventData.Stage7];
+          eventDetails.includedEvents = includedEvents.filter(el => el !== '0');
+        }
         return eventDetails;
       });
-      const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
-      const expandOrisDetails = eventsEntered.map((eachEvent) => {
-        return fetch(`${ORIS_API_GETEVENT}&id=${eachEvent.orisEventId}`)
-          .then(response => response.json())
-          .then((orisEvent) => {
-            const eventData = {
-              orisEventId: orisEvent.Data.ID,
-              date: orisEvent.Data.Date,
-              name: orisEvent.Data.Name,
-              place: orisEvent.Data.Place,
-              organiser: orisEvent.Data.Org1.Abbr,
-            };
-            if (orisEvent.Data.Stages !== '0') {
-              const includedEvents = [orisEvent.Data.Stage1, orisEvent.Data.Stage2,
-                orisEvent.Data.Stage3, orisEvent.Data.Stage4, orisEvent.Data.Stage5,
-                orisEvent.Data.Stage6, orisEvent.Data.Stage7];
-              eventData.includedEvents = includedEvents.filter(el => el !== '0');
-            }
-            return eventData;
-          });
-      });
-      Promise.all(expandOrisDetails).then((details) => {
-        // console.log('details', details);
-        for (let i = 0; i < eventsEntered.length; i += 1) {
-          eventsEntered[i].name = details[i].name;
-          eventsEntered[i].place = details[i].place;
-          if (details[i].includedEvents) {
-            eventsEntered[i].includedEvents = details[i].includedEvents;
-          }
-        }
-        logger('success')(`Returned list of ${eventsEntered.length} event(s) entered by ${req.user.email} (${req.user.orisId}).`);
-        res.status(200).send(eventsEntered);
-      });
-    })
-    .catch((orisErr) => {
-      logger('error')(`ORIS API error: ${orisErr.message}.`);
-      return res.status(400).send({ error: orisErr.message });
     });
+    Promise.all(expandOrisDetails).then((details) => {
+      for (let i = 0; i < eventsEntered.length; i += 1) {
+        eventsEntered[i].name = details[i].name;
+        eventsEntered[i].place = details[i].place;
+        if (details[i].includedEvents) {
+          eventsEntered[i].includedEvents = details[i].includedEvents;
+        }
+      }
+      logger('success')(`Returned list of ${eventsEntered.length} event(s) entered by ${req.user.email} (${req.user.orisId}).`);
+      res.status(200).send(eventsEntered);
+    });
+  }).catch((orisErr) => {
+    logger('error')(`ORIS API error: ${orisErr.message}.`);
+    return res.status(400).send({ error: orisErr.message });
+  });
 };
 
 // retrieve a list of all events matching specified criteria

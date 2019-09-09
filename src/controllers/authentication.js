@@ -1,7 +1,8 @@
 const jwt = require('jwt-simple');
+
 const User = require('../models/user');
 const logger = require('../services/logger');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
 
 const tokenForUser = (user) => {
   const timestamp = new Date().getTime();

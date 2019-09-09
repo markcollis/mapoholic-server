@@ -4,7 +4,7 @@ const Event = require('../models/oevent');
 const LinkedEvent = require('../models/linkedEvent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
 const {
   validateEventIds,
 } = require('../services/validateIds');

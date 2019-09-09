@@ -1,7 +1,8 @@
 const { ObjectID } = require('mongodb');
-const logger = require('../services/logger');
+
 const logReq = require('./logReq');
-const { getActivityList } = require('../services/activity');
+const logger = require('../services/logger');
+const { getActivityList } = require('../services/activityServices');
 
 // retrieve a list of recent activity matching specified criteria
 const getActivityLog = (req, res) => {

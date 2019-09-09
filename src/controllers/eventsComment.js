@@ -2,7 +2,7 @@ const { ObjectID } = require('mongodb');
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
 
 // app.post('/events/:eventid/comments/:userid', requireAuth, Events.postComment);
 // Post a new comment against the specified user's map in this event

@@ -1,7 +1,7 @@
-const fetch = require('node-fetch');
+// Functions concerned solely or primarily with club data (club model)
+
 const mongoose = require('mongoose');
 
-const logger = require('../services/logger');
 const Club = require('../models/club');
 const Event = require('../models/oevent');
 const User = require('../models/user');
@@ -26,22 +26,22 @@ const getClubById = (id) => {
 };
 
 // get matching club records
-const getClubRecords = (clubSearchCriteria) => {
-  return Club.find(clubSearchCriteria)
+const getClubRecords = (searchCriteria) => {
+  return Club.find(searchCriteria)
     .populate('owner', '_id displayName')
     .select('-active -__v');
 };
 
 // update a club record
-const updateClubById = (clubId, fieldsToUpdate) => {
-  return Club.findByIdAndUpdate(clubId, { $set: fieldsToUpdate }, { new: true })
+const updateClubById = (id, fieldsToUpdate) => {
+  return Club.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
     .populate('owner', '_id displayName')
     .select('-active -__v');
 };
 
 // delete a club record and references to it in Events and Users
-const deleteClubById = (clubId) => {
-  return getClubById(clubId).then((clubToDelete) => {
+const deleteClubById = (id) => {
+  return getClubById(id).then((clubToDelete) => {
     const now = new Date();
     const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
       .concat((`0${(now.getMonth() + 1)}`).slice(-2))
@@ -50,15 +50,15 @@ const deleteClubById = (clubId) => {
       .concat((`0${now.getHours()}`).slice(-2))
       .concat((`0${now.getMinutes()}`).slice(-2));
     const newShortName = `${clubToDelete.shortName} ${deletedAt}`;
-    return Club.findByIdAndUpdate(clubId,
+    return Club.findByIdAndUpdate(id,
       { $set: { active: false, shortName: newShortName } },
       { new: true }).then((deletedClub) => {
       // now remove all references from User.memberOf
-      return User.updateMany({ memberOf: mongoose.Types.ObjectId(clubId) },
-        { $pull: { memberOf: mongoose.Types.ObjectId(clubId) } }).then(() => {
+      return User.updateMany({ memberOf: mongoose.Types.ObjectId(id) },
+        { $pull: { memberOf: mongoose.Types.ObjectId(id) } }).then(() => {
         // now remove all references from Event.organisedBy
-        return Event.updateMany({ organisedBy: mongoose.Types.ObjectId(clubId) },
-          { $pull: { organisedBy: mongoose.Types.ObjectId(clubId) } }).then(() => {
+        return Event.updateMany({ organisedBy: mongoose.Types.ObjectId(id) },
+          { $pull: { organisedBy: mongoose.Types.ObjectId(id) } }).then(() => {
           return deletedClub;
         });
       });
@@ -66,26 +66,10 @@ const deleteClubById = (clubId) => {
   });
 };
 
-// helper function to get ORIS club data - returns a Promise
-const getOrisClubData = (clubAbbr) => {
-  const ORIS_API_GETCLUB = 'https://oris.orientacnisporty.cz/API/?format=json&method=getClub';
-  return fetch(`${ORIS_API_GETCLUB}&id=${clubAbbr}`)
-    .then(response => response.json())
-    .then((json) => {
-      return json.Data;
-    })
-    .catch((orisErr) => {
-      logger('error')(`ORIS API error: ${orisErr.message}. Create operation may proceed.`);
-      // don't send an HTTP error response, the club can still be created
-    });
-};
-
-
 module.exports = {
   createClubRecord,
   deleteClubById,
   getClubById,
   getClubRecords,
-  getOrisClubData,
   updateClubById,
 };

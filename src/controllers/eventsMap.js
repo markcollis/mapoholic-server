@@ -6,7 +6,7 @@ const { getQRData, calculateDistance } = require('../services/parseQR');
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
 const createRouteOverlay = require('../services/createRouteOverlay');
 
 // upload a scanned map to the specified event for user :userid

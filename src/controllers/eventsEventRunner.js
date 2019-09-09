@@ -1,9 +1,15 @@
 const { ObjectID } = require('mongodb');
-const fetch = require('node-fetch');
+
 const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activity');
+const { recordActivity } = require('../services/activityServices');
+const {
+  getOrisEventData,
+  getOrisEventEntryData,
+  getOrisEventResultsData,
+} = require('../services/orisAPI');
+
 
 // add current user as a runner at the specified event
 const addEventRunner = (req, res) => {
@@ -140,83 +146,89 @@ const orisAddEventRunner = (req, res) => {
       logger('error')('Error updating event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
     }
-    if (!eventToAddRunnerTo.orisId || eventToAddRunnerTo.orisId === '') {
+    const { orisId, runners } = eventToAddRunnerTo;
+    if (!orisId || orisId === '') {
       logger('error')('Error adding runner: event does not have ORIS ID.');
       return res.status(400).send({ error: 'Event does not have ORIS ID.' });
     }
-    const runnerIds = (eventToAddRunnerTo.runners.length === 0)
+    const runnerIds = (runners.length === 0)
       ? []
-      : eventToAddRunnerTo.runners.map(runner => runner.user.toString());
+      : runners.map(runner => runner.user.toString());
     if (runnerIds.includes(requestorId)) {
       logger('error')('Error adding runner to event: runner already present.');
       return res.status(400).send({ error: 'Runner already present in event. Use PATCH to update.' });
     }
-    const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
-    const ORIS_API_GETEVENTENTRIES = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventEntries';
-    const ORIS_API_GETEVENTRESULTS = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventResults';
-    const getOrisEventData = fetch(`${ORIS_API_GETEVENT}&id=${eventToAddRunnerTo.orisId}`)
-      .then(response => response.json());
-    const getOrisEntryData = fetch(`${ORIS_API_GETEVENTENTRIES}&eventid=${eventToAddRunnerTo.orisId}`)
-      .then(response => response.json());
-    const getOrisResultsData = fetch(`${ORIS_API_GETEVENTRESULTS}&eventid=${eventToAddRunnerTo.orisId}`)
-      .then(response => response.json());
-    return Promise.all([getOrisEventData, getOrisEntryData, getOrisResultsData])
-      .then(([orisEventData, orisEntryData, orisResultsData]) => {
-        // console.log('ORIS requests made');
-        const runnerEntryData = orisEntryData.Data[Object.keys(orisEntryData.Data)
-          .filter((entryKey) => {
-            return orisEntryData.Data[entryKey].UserID === requestorOrisId;
-          })];
-        let runnerClassData = null;
-        if (runnerEntryData && runnerEntryData.ClassID) {
-          runnerClassData = orisEventData.Data.Classes[`Class_${runnerEntryData.ClassID}`];
-        }
-        // console.log('runnerClassData:', runnerClassData);
-        let classResultsData = null;
-        let runnerResultsData = null;
-        if (orisResultsData && Object.keys(orisResultsData.Data).length > 0) {
-          classResultsData = Object.keys(orisResultsData.Data)
-            .filter((resultKey) => {
-              if (orisResultsData.Data[resultKey] && runnerEntryData) {
-                return orisResultsData.Data[resultKey].ClassID === runnerEntryData.ClassID;
-              }
-              return false;
-            })
-            .map(resultKey => orisResultsData.Data[resultKey]);
-          runnerResultsData = classResultsData.find((result) => {
-            return result.UserID === requestorOrisId;
-          });
-        }
-        // console.log('classResultsData:', classResultsData);
-        // console.log('runnerResultsData:', runnerResultsData);
-        req.body = { visibility: req.user.visibility };
-        if (runnerClassData) {
-          req.body.courseTitle = runnerClassData.Name;
-          req.body.courseLength = runnerClassData.Distance;
-          req.body.courseClimb = runnerClassData.Climbing;
-          req.body.courseControls = runnerClassData.Controls;
-        }
-        if (runnerResultsData) {
-          req.body.time = runnerResultsData.Time;
-          req.body.place = runnerResultsData.Place;
-          req.body.timeBehind = runnerResultsData.Loss;
-          req.body.fieldSize = classResultsData.length;
-          req.body.fullResults = classResultsData.map((runner) => {
-            return {
-              place: runner.Place,
-              sort: runner.Sort,
-              name: runner.Name,
-              regNumber: runner.RegNo,
-              clubShort: runner.RegNo.slice(0, 3),
-              club: runner.ClubNameResults,
-              time: runner.Time,
-              loss: runner.Loss,
-            };
-          });
-        }
-        // console.log('req.body:', req.body);
-        return addEventRunner(req, res);
-      })
+    // const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
+    // const ORIS_API_GETEVENTENTRIES = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventEntries';
+    // const ORIS_API_GETEVENTRESULTS = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventResults';
+    // const getOrisEventData = fetch(`${ORIS_API_GETEVENT}&id=${eventToAddRunnerTo.orisId}`)
+    //   .then(response => response.json());
+    // const getOrisEntryData = fetch(`${
+    // ORIS_API_GETEVENTENTRIES}&eventid=${eventToAddRunnerTo.orisId}`)
+    //   .then(response => response.json());
+    // const getOrisResultsData = fetch(`${
+    // ORIS_API_GETEVENTRESULTS}&eventid=${eventToAddRunnerTo.orisId}`)
+    //   .then(response => response.json());
+    return Promise.all([
+      getOrisEventData(orisId),
+      getOrisEventEntryData(orisId),
+      getOrisEventResultsData(orisId),
+    ]).then(([orisEventData, orisEntryData, orisResultsData]) => {
+      // console.log('ORIS requests made');
+      const runnerEntryData = orisEntryData[Object.keys(orisEntryData)
+        .filter((entryKey) => {
+          return orisEntryData[entryKey].UserID === requestorOrisId;
+        })];
+      let runnerClassData = null;
+      if (runnerEntryData && runnerEntryData.ClassID) {
+        runnerClassData = orisEventData.Classes[`Class_${runnerEntryData.ClassID}`];
+      }
+      // console.log('runnerClassData:', runnerClassData);
+      let classResultsData = null;
+      let runnerResultsData = null;
+      if (orisResultsData && Object.keys(orisResultsData).length > 0) {
+        classResultsData = Object.keys(orisResultsData)
+          .filter((resultKey) => {
+            if (orisResultsData[resultKey] && runnerEntryData) {
+              return orisResultsData[resultKey].ClassID === runnerEntryData.ClassID;
+            }
+            return false;
+          })
+          .map(resultKey => orisResultsData[resultKey]);
+        runnerResultsData = classResultsData.find((result) => {
+          return result.UserID === requestorOrisId;
+        });
+      }
+      // console.log('classResultsData:', classResultsData);
+      // console.log('runnerResultsData:', runnerResultsData);
+      req.body = { visibility: req.user.visibility };
+      if (runnerClassData) {
+        req.body.courseTitle = runnerClassData.Name;
+        req.body.courseLength = runnerClassData.Distance;
+        req.body.courseClimb = runnerClassData.Climbing;
+        req.body.courseControls = runnerClassData.Controls;
+      }
+      if (runnerResultsData) {
+        req.body.time = runnerResultsData.Time;
+        req.body.place = runnerResultsData.Place;
+        req.body.timeBehind = runnerResultsData.Loss;
+        req.body.fieldSize = classResultsData.length;
+        req.body.fullResults = classResultsData.map((runner) => {
+          return {
+            place: runner.Place,
+            sort: runner.Sort,
+            name: runner.Name,
+            regNumber: runner.RegNo,
+            clubShort: runner.RegNo.slice(0, 3),
+            club: runner.ClubNameResults,
+            time: runner.Time,
+            loss: runner.Loss,
+          };
+        });
+      }
+      // console.log('req.body:', req.body);
+      return addEventRunner(req, res);
+    })
       .catch((orisErr) => {
         logger('error')(`ORIS API error: ${orisErr.message}.`);
         return res.status(400).send({ error: orisErr.message });
