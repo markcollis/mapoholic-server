@@ -91,14 +91,14 @@ const dbUpdateEvent = (id, fieldsToUpdate, currentEventLinks = []) => {
     .populate('linkedTo', '_id displayName')
     .populate({
       path: 'runners.user',
-      select: '_id displayName fullName regNumber orisId profileImage visibility',
+      select: '_id active displayName fullName regNumber orisId profileImage visibility',
       populate: { path: 'memberOf', select: '_id shortName' },
     })
     .populate({
       path: 'runners.comments.author',
       select: '_id displayName fullName regNumber',
     })
-    .select('-active -__v')
+    .select('-__v')
     .then((updatedEvent) => {
       // now change the Event references in relevant EventLinks
       if (addedEventLinkIds.length > 0 || removedEventLinkIds.length > 0) {
