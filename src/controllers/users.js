@@ -299,18 +299,21 @@ const deleteProfileImage = (req, res) => {
     logger('error')(`Error: ${req.user.email} not allowed to delete profile image for ${req.params.id}.`);
     return res.status(401).send({ error: 'Not allowed to delete profile image for this user.' });
   }
-  // delete the reference to it in the user document
-  return dbUpdateUser(req.params.id, { profileImage: '' }).then((deletedUser) => {
-    // then delete the file
-    if (!deletedUser.profileImage) {
-      logger('error')(`Error: ${deletedUser.email} does not have a profile image.`);
-      return res.status(404).send({ error: `Error: ${deletedUser.email} does not have a profile image.` });
+  // need to find first to get location of current profileImage
+  return dbGetUserById(req.params.id).then((userToUpdate) => {
+    if (!userToUpdate.profileImage || userToUpdate.profileImage === '') {
+      logger('error')(`Error: ${userToUpdate.email} does not have a profile image.`);
+      return res.status(404).send({ error: `Error: ${userToUpdate.email} does not have a profile image.` });
     }
-    const fileToDelete = path.join('images', 'avatars', deletedUser.profileImage.split('/').pop());
-    return fs.unlink(fileToDelete, (err) => {
-      if (err) throw err;
-      logger('success')(`Profile image deleted from ${deletedUser.email} by ${req.user.email}.`);
-      return res.status(200).send({ status: `Profile image deleted from ${deletedUser.email} by ${req.user.email}.` });
+    // delete the reference to the profile image in the user document
+    return dbUpdateUser(req.params.id, { profileImage: '' }).then(() => {
+      // then delete the file
+      const fileToDelete = path.join('images', 'avatars', userToUpdate.profileImage.split('/').pop());
+      return fs.unlink(fileToDelete, (err) => {
+        if (err) throw err;
+        logger('success')(`Profile image deleted from ${userToUpdate.email} by ${req.user.email}.`);
+        return res.status(200).send({ status: `Profile image deleted from ${userToUpdate.email} by ${req.user.email}.` });
+      });
     });
   }).catch((err) => {
     logger('error')('Error deleting profile image:', err.message);
