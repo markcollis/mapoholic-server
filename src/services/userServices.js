@@ -4,21 +4,23 @@ const Event = require('../models/oevent');
 const User = require('../models/user');
 
 // add a new user
-const createUserRecord = (fieldsToCreate) => {
+const dbCreateUser = (fieldsToCreate) => {
   const newUser = new User(fieldsToCreate);
   return newUser.save();
 };
 
 // get a specific user record
-const getUserDetailsById = (id) => {
+const dbGetUserById = (id) => {
   return User.findOne({ _id: id, active: true }) // inactive users should not be visible through API
+    .lean()
     .populate('memberOf')
     .select('-password -active -__v');
 };
 
 // get matching user records
-const getUserRecords = (searchCriteria) => {
+const dbGetUsers = (searchCriteria) => {
   return User.find(searchCriteria)
+    .lean()
     .populate('memberOf', 'shortName')
     .select('-password')
     .then((profiles) => {
@@ -40,15 +42,16 @@ const getUserRecords = (searchCriteria) => {
 };
 
 // update a user record
-const updateUserById = (id, fieldsToUpdate) => {
+const dbUpdateUser = (id, fieldsToUpdate) => {
   return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+    .lean()
     .populate('memberOf', 'shortName')
     .select('-password');
 };
 
 // delete a user record and references to it in Events
-const deleteUserById = (id) => {
-  return getUserDetailsById(id).then((userToDelete) => {
+const dbDeleteUser = (id) => {
+  return dbGetUserById(id).then((userToDelete) => {
     if (!userToDelete) throw new Error('User could not be found.');
     const now = new Date();
     const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
@@ -64,7 +67,7 @@ const deleteUserById = (id) => {
       email: newEmail,
       displayName: newDisplayName,
     };
-    return updateUserById(id, fieldsToUpdate).then((deletedUser) => {
+    return dbUpdateUser(id, fieldsToUpdate).then((deletedUser) => {
       // Consider all related records:
       // 1. Owner of club and event records: leave as deleted user, only admin can see them.
       // 2. Comment author: leave as deleted user, strip 'deleted' when retrieving comments?
@@ -76,9 +79,9 @@ const deleteUserById = (id) => {
 };
 
 module.exports = {
-  createUserRecord,
-  getUserDetailsById,
-  getUserRecords,
-  updateUserById,
-  deleteUserById,
+  dbCreateUser,
+  dbGetUserById,
+  dbGetUsers,
+  dbUpdateUser,
+  dbDeleteUser,
 };

@@ -77,4 +77,6 @@ const createRouteOverlay = async (routeFilename, courseFilename, overlayThreshol
     });
 };
 
-module.exports = createRouteOverlay;
+module.exports = {
+  createRouteOverlay,
+};

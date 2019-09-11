@@ -2,7 +2,7 @@ const { ObjectID } = require('mongodb');
 
 const logReq = require('./logReq');
 const logger = require('../services/logger');
-const { getActivityList } = require('../services/activityServices');
+const { dbGetActivities } = require('../services/activityServices');
 
 // retrieve a list of recent activity matching specified criteria
 const getActivityLog = (req, res) => {
@@ -11,7 +11,7 @@ const getActivityLog = (req, res) => {
   const requestor = req.user;
   const listLength = req.query.number;
   // support filtering using query strings
-  const validFilters = ['actionType', 'actionBy', 'club', 'comment', 'event', 'eventRunner', 'linkedEvent', 'user'];
+  const validFilters = ['actionType', 'actionBy', 'club', 'comment', 'event', 'eventRunner', 'eventLink', 'user'];
   Object.keys(req.query).forEach((key) => {
     if (validFilters.includes(key)) {
       if (key === 'actionType') {
@@ -24,7 +24,7 @@ const getActivityLog = (req, res) => {
       }
     }
   });
-  getActivityList(activitySearchCriteria, requestor, listLength)
+  dbGetActivities(activitySearchCriteria, requestor, listLength)
     .then((activityQueryResults) => {
       logger('success')(`Returned list of ${activityQueryResults.length} activities.`);
       return res.status(200).send(activityQueryResults);

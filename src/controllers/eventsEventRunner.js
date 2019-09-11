@@ -1,14 +1,19 @@
 const { ObjectID } = require('mongodb');
 
-const Event = require('../models/oevent');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activityServices');
+const { dbRecordActivity } = require('../services/activityServices');
 const {
   getOrisEventData,
   getOrisEventEntryData,
   getOrisEventResultsData,
 } = require('../services/orisAPI');
+const {
+  dbGetEventById,
+  dbAddRunner,
+  dbUpdateRunner,
+  dbDeleteRunner,
+} = require('../services/eventServices');
 
 
 // add current user as a runner at the specified event
@@ -27,14 +32,15 @@ const addEventRunner = (req, res) => {
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   // now need to check database to identify existing runners
-  return Event.findById(eventid).then((eventToAddRunnerTo) => {
+  return dbGetEventById(eventid).then((eventToAddRunnerTo) => {
+  // return Event.findById(eventid).then((eventToAddRunnerTo) => {
     if (!eventToAddRunnerTo) {
       logger('error')('Error adding runner to event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
     }
     const runnerIds = (eventToAddRunnerTo.runners.length === 0)
       ? []
-      : eventToAddRunnerTo.runners.map(runner => runner.user.toString());
+      : eventToAddRunnerTo.runners.map(runner => runner.user._id.toString());
     // console.log('runnerIds:', runnerIds);
     if (runnerIds.includes(requestorId)) {
       logger('error')('Error adding runner to event: runner already present.');
@@ -63,21 +69,22 @@ const addEventRunner = (req, res) => {
       }
     });
     // console.log('fieldsToCreateRunner:', fieldsToCreateRunner);
-    return Event.findByIdAndUpdate(eventid, { $addToSet: { runners: fieldsToCreateRunner } },
-      { new: true })
-      .populate('owner', '_id displayName')
-      .populate('organisedBy', '_id shortName')
-      .populate('linkedTo', '_id displayName')
-      .populate({
-        path: 'runners.user',
-        select: '_id displayName fullName regNumber orisId profileImage visibility',
-        populate: { path: 'memberOf', select: '_id shortName' },
-      })
-      .populate({
-        path: 'runners.comments.author',
-        select: '_id displayName fullName regNumber',
-      })
-      .select('-active -__v')
+    return dbAddRunner(eventid, fieldsToCreateRunner)
+    // return Event.findByIdAndUpdate(eventid, { $addToSet: { runners: fieldsToCreateRunner } },
+    //   { new: true })
+    //   .populate('owner', '_id displayName')
+    //   .populate('organisedBy', '_id shortName')
+    //   .populate('linkedTo', '_id displayName')
+    //   .populate({
+    //     path: 'runners.user',
+    //     select: '_id displayName fullName regNumber orisId profileImage visibility',
+    //     populate: { path: 'memberOf', select: '_id shortName' },
+    //   })
+    //   .populate({
+    //     path: 'runners.comments.author',
+    //     select: '_id displayName fullName regNumber',
+    //   })
+    //   .select('-active -__v')
       .then((updatedEvent) => {
         const filteredEvent = updatedEvent;
         if (updatedEvent.runners.length > 0) {
@@ -92,7 +99,6 @@ const addEventRunner = (req, res) => {
                 const commonClubs = runner.user.memberOf.filter((clubId) => {
                   return requestorClubs.includes(clubId.toString());
                 });
-                // console.log('commonClubs', commonClubs);
                 if (commonClubs.length > 0) canSee = true;
               }
             }
@@ -102,13 +108,13 @@ const addEventRunner = (req, res) => {
           filteredEvent.runners = selectedRunners.filter(runner => runner);
         }
         logger('success')(`Added ${req.user.email} as runner to ${updatedEvent.name} (${updatedEvent.date}).`);
-        recordActivity({
+        dbRecordActivity({
           actionType: 'EVENT_RUNNER_ADDED',
           actionBy: req.user._id,
           event: eventid,
           eventRunner: req.user._id,
         });
-        return res.status(200).send(updatedEvent);
+        return res.status(200).send(filteredEvent);
       })
       .catch((err) => {
         logger('error')('Error adding runner to event:', err.message);
@@ -141,7 +147,8 @@ const orisAddEventRunner = (req, res) => {
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   // now need to check database to identify event and runners
-  return Event.findById(eventid).then((eventToAddRunnerTo) => {
+  return dbGetEventById(eventid).then((eventToAddRunnerTo) => {
+  // return Event.findById(eventid).then((eventToAddRunnerTo) => {
     if (!eventToAddRunnerTo) {
       logger('error')('Error updating event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
@@ -153,28 +160,16 @@ const orisAddEventRunner = (req, res) => {
     }
     const runnerIds = (runners.length === 0)
       ? []
-      : runners.map(runner => runner.user.toString());
+      : runners.map(runner => runner.user._id.toString());
     if (runnerIds.includes(requestorId)) {
       logger('error')('Error adding runner to event: runner already present.');
       return res.status(400).send({ error: 'Runner already present in event. Use PATCH to update.' });
     }
-    // const ORIS_API_GETEVENT = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEvent';
-    // const ORIS_API_GETEVENTENTRIES = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventEntries';
-    // const ORIS_API_GETEVENTRESULTS = 'https://oris.orientacnisporty.cz/API/?format=json&method=getEventResults';
-    // const getOrisEventData = fetch(`${ORIS_API_GETEVENT}&id=${eventToAddRunnerTo.orisId}`)
-    //   .then(response => response.json());
-    // const getOrisEntryData = fetch(`${
-    // ORIS_API_GETEVENTENTRIES}&eventid=${eventToAddRunnerTo.orisId}`)
-    //   .then(response => response.json());
-    // const getOrisResultsData = fetch(`${
-    // ORIS_API_GETEVENTRESULTS}&eventid=${eventToAddRunnerTo.orisId}`)
-    //   .then(response => response.json());
     return Promise.all([
       getOrisEventData(orisId),
       getOrisEventEntryData(orisId),
       getOrisEventResultsData(orisId),
     ]).then(([orisEventData, orisEntryData, orisResultsData]) => {
-      // console.log('ORIS requests made');
       const runnerEntryData = orisEntryData[Object.keys(orisEntryData)
         .filter((entryKey) => {
           return orisEntryData[entryKey].UserID === requestorOrisId;
@@ -183,7 +178,6 @@ const orisAddEventRunner = (req, res) => {
       if (runnerEntryData && runnerEntryData.ClassID) {
         runnerClassData = orisEventData.Classes[`Class_${runnerEntryData.ClassID}`];
       }
-      // console.log('runnerClassData:', runnerClassData);
       let classResultsData = null;
       let runnerResultsData = null;
       if (orisResultsData && Object.keys(orisResultsData).length > 0) {
@@ -199,8 +193,6 @@ const orisAddEventRunner = (req, res) => {
           return result.UserID === requestorOrisId;
         });
       }
-      // console.log('classResultsData:', classResultsData);
-      // console.log('runnerResultsData:', runnerResultsData);
       req.body = { visibility: req.user.visibility };
       if (runnerClassData) {
         req.body.courseTitle = runnerClassData.Name;
@@ -226,7 +218,6 @@ const orisAddEventRunner = (req, res) => {
           };
         });
       }
-      // console.log('req.body:', req.body);
       return addEventRunner(req, res);
     })
       .catch((orisErr) => {
@@ -255,15 +246,14 @@ const updateEventRunner = (req, res) => {
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   // now need to check database to confirm that runner at event exists
-  return Event.findById(eventid).then((eventToUpdateRunnerAt) => {
+  return dbGetEventById(eventid).then((eventToUpdateRunnerAt) => {
     if (!eventToUpdateRunnerAt) {
       logger('error')('Error updating runner at event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
     }
     const runnerIds = (eventToUpdateRunnerAt.runners.length === 0)
       ? []
-      : eventToUpdateRunnerAt.runners.map(runner => runner.user.toString());
-    // console.log('runnerIds:', runnerIds);
+      : eventToUpdateRunnerAt.runners.map(runner => runner.user._id.toString());
     if (!runnerIds.includes(userid)) {
       logger('error')('Error updating runner at event: runner not present.');
       return res.status(400).send({ error: 'Runner not present in event. Use POST to add.' });
@@ -292,50 +282,24 @@ const updateEventRunner = (req, res) => {
           fieldsToUpdateRunner[key] = req.body[key];
         }
       });
-      // console.log('fieldsToUpdateRunner:', fieldsToUpdateRunner);
       const numberOfFieldsToUpdate = Object.keys(fieldsToUpdateRunner).length;
-      // console.log('fields to be updated:', numberOfFieldsToUpdate);
       if (numberOfFieldsToUpdate === 0) {
         logger('error')('Update runner at event error: no valid fields to update.');
         return res.status(400).send({ error: 'No valid fields to update.' });
       }
-      const setObject = Object.keys(fieldsToUpdateRunner).reduce((acc, cur) => {
-        return Object.assign(acc, { [`runners.$.${cur}`]: fieldsToUpdateRunner[cur] });
-      }, {});
-      // console.log('setObject:', setObject);
-      return Event.findOneAndUpdate(
-        { _id: eventid, 'runners.user': userid },
-        { $set: setObject },
-        // { $pull: { runners: { user: userid } } },  // to delete instead of update - use below
-        { new: true },
-      )
-        .populate('owner', '_id displayName')
-        .populate('organisedBy', '_id shortName')
-        .populate('linkedTo', '_id displayName')
-        .populate({
-          path: 'runners.user',
-          select: '_id displayName fullName regNumber orisId profileImage visibility',
-          populate: { path: 'memberOf', select: '_id shortName' },
-        })
-        .populate({
-          path: 'runners.comments.author',
-          select: '_id displayName fullName regNumber',
-        })
-        .select('-active -__v')
-        .then((updatedEvent) => {
-          logger('success')(`Updated ${req.user.email} in ${updatedEvent.name} (${updatedEvent.date}) (${numberOfFieldsToUpdate} field(s)).`);
-          recordActivity({
-            actionType: 'EVENT_RUNNER_UPDATED',
-            actionBy: req.user._id,
-            event: eventid,
-            eventRunner: userid,
-          });
-          return res.status(200).send(updatedEvent);
-        })
-        .catch((err) => {
-          logger('error')('Error updating runner at event:', err.message);
-          return res.status(400).send({ error: err.message });
+      return dbUpdateRunner(eventid, userid, fieldsToUpdateRunner).then((updatedEvent) => {
+        logger('success')(`Updated ${req.user.email} in ${updatedEvent.name} (${updatedEvent.date}) (${numberOfFieldsToUpdate} field(s)).`);
+        dbRecordActivity({
+          actionType: 'EVENT_RUNNER_UPDATED',
+          actionBy: req.user._id,
+          event: eventid,
+          eventRunner: userid,
         });
+        return res.status(200).send(updatedEvent);
+      }).catch((err) => {
+        logger('error')('Error updating runner at event:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
     }
     logger('error')(`Error: ${req.user.email} not allowed to update runner ${userid}.`);
     return res.status(401).send({ error: 'Not allowed to update this runner.' });
@@ -372,50 +336,28 @@ const deleteEventRunner = (req, res) => {
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   // now need to check database to confirm that runner at event exists
-  return Event.findById(eventid).then((eventToDeleteRunner) => {
+  return dbGetEventById(eventid).then((eventToDeleteRunner) => {
     if (!eventToDeleteRunner) {
       logger('error')('Error deleting runner: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
     }
     const selectedRunner = eventToDeleteRunner.runners
-      .find(runner => runner.user.toString() === userid);
+      .find(runner => runner.user._id.toString() === userid);
     if (!selectedRunner) {
       logger('error')('Error deleting runner: runner not found.');
       return res.status(400).send({ error: 'Runner not found in event, so can not be deleted.' });
     }
     // all checks done, can now delete
-    return Event.findOneAndUpdate(
-      { _id: eventid },
-      { $pull: { runners: { user: userid } } },
-      { new: true },
-    )
-      .populate('owner', '_id displayName')
-      .populate('organisedBy', '_id shortName')
-      .populate('linkedTo', '_id displayName')
-      .populate({
-        path: 'runners.user',
-        select: '_id displayName fullName regNumber orisId profileImage visibility',
-        populate: { path: 'memberOf', select: '_id shortName' },
-      })
-      .populate({
-        path: 'runners.comments.author',
-        select: '_id displayName fullName regNumber',
-      })
-      .select('-active -__v')
-      .then((updatedEvent) => {
-        logger('success')(`Deleted runner from ${updatedEvent.name} (${updatedEvent.date}).`);
-        recordActivity({
-          actionType: 'EVENT_RUNNER_DELETED',
-          actionBy: req.user._id,
-          event: eventid,
-          eventRunner: userid,
-        });
-        return res.status(200).send(updatedEvent);
-      })
-      .catch((err) => {
-        logger('error')('Error deleting runner:', err.message);
-        return res.status(400).send({ error: err.message });
+    return dbDeleteRunner(eventid, userid).then((updatedEvent) => {
+      logger('success')(`Deleted runner from ${updatedEvent.name} (${updatedEvent.date}).`);
+      dbRecordActivity({
+        actionType: 'EVENT_RUNNER_DELETED',
+        actionBy: req.user._id,
+        event: eventid,
+        eventRunner: userid,
       });
+      return res.status(200).send(updatedEvent);
+    });
   }).catch((err) => {
     logger('error')('Error deleting runner:', err.message);
     return res.status(400).send({ error: err.message });

@@ -1,12 +1,12 @@
 // these functions validate not just that the parameters passed are the correct
 // format for Mongodb ObjectIDs but actually exist in the relevant collection
-// User IDs are always referenced singly, Club, Event and LinkedEvent IDs as arrays.
+// User IDs are always referenced singly, Club, Event and EventLink IDs as arrays.
 
 const { ObjectID } = require('mongodb');
 const User = require('../models/user');
 const Club = require('../models/club');
 const Event = require('../models/oevent');
-const LinkedEvent = require('../models/linkedEvent');
+const EventLink = require('../models/eventLink');
 const logger = require('../services/logger');
 
 // returns a Promise that resolves to an array of the valid IDs in the input array
@@ -44,12 +44,12 @@ const validateEventIds = (candidateEventIds) => {
 };
 
 // returns a Promise that resolves to an array of the valid IDs in the input array
-const validateLinkedEventIds = (candidateLinkedEventIds) => {
-  if (candidateLinkedEventIds.length === 0) return Promise.resolve([]);
-  return Promise.all(candidateLinkedEventIds.map((linkedEventId) => {
-    if (ObjectID.isValid(linkedEventId)) {
-      return LinkedEvent.find({ _id: linkedEventId }).then((linkedEvents) => {
-        return (linkedEvents[0]) ? linkedEvents[0]._id : false;
+const validateEventLinkIds = (candidateEventLinkIds) => {
+  if (candidateEventLinkIds.length === 0) return Promise.resolve([]);
+  return Promise.all(candidateEventLinkIds.map((eventLinkId) => {
+    if (ObjectID.isValid(eventLinkId)) {
+      return EventLink.find({ _id: eventLinkId }).then((eventLinks) => {
+        return (eventLinks[0]) ? eventLinks[0]._id : false;
       });
     }
     return false;
@@ -77,6 +77,6 @@ const validateUserId = (candidateUserId) => {
 module.exports = {
   validateClubIds,
   validateEventIds,
-  validateLinkedEventIds,
+  validateEventLinkIds,
   validateUserId,
 };

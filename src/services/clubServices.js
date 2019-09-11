@@ -7,7 +7,7 @@ const Event = require('../models/oevent');
 const User = require('../models/user');
 
 // add a new club
-const createClubRecord = (fieldsToCreate) => {
+const dbCreateClub = (fieldsToCreate) => {
   const newClub = new Club(fieldsToCreate);
   return newClub.save().then((createdClub) => {
     return createdClub.populate('owner', '_id displayName').execPopulate();
@@ -21,27 +21,29 @@ const createClubRecord = (fieldsToCreate) => {
 };
 
 // get a specific club record
-const getClubById = (id) => {
-  return Club.findById(id);
+const dbGetClubById = (id) => {
+  return Club.findById(id).lean();
 };
 
 // get matching club records
-const getClubRecords = (searchCriteria) => {
+const dbGetClubs = (searchCriteria) => {
   return Club.find(searchCriteria)
+    .lean()
     .populate('owner', '_id displayName')
     .select('-active -__v');
 };
 
 // update a club record
-const updateClubById = (id, fieldsToUpdate) => {
+const dbUpdateClub = (id, fieldsToUpdate) => {
   return Club.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
+    .lean()
     .populate('owner', '_id displayName')
     .select('-active -__v');
 };
 
 // delete a club record and references to it in Events and Users
-const deleteClubById = (id) => {
-  return getClubById(id).then((clubToDelete) => {
+const dbDeleteClub = (id) => {
+  return dbGetClubById(id).then((clubToDelete) => {
     // error handling!
     if (!clubToDelete) throw new Error('Club could not be found.');
     const now = new Date();
@@ -69,9 +71,9 @@ const deleteClubById = (id) => {
 };
 
 module.exports = {
-  createClubRecord,
-  deleteClubById,
-  getClubById,
-  getClubRecords,
-  updateClubById,
+  dbCreateClub,
+  dbGetClubById,
+  dbGetClubs,
+  dbUpdateClub,
+  dbDeleteClub,
 };

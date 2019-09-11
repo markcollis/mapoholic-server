@@ -1,18 +1,16 @@
 const { ObjectID } = require('mongodb');
-const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
-const { getQRData, calculateDistance } = require('../services/parseQR');
-const Event = require('../models/oevent');
+
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activityServices');
-const createRouteOverlay = require('../services/createRouteOverlay');
+const { dbRecordActivity } = require('../services/activityServices');
+const { getQRData, calculateDistance } = require('../services/parseQR');
+const { createRouteOverlay } = require('../services/createRouteOverlay');
+const { createThumbnailAndExtract } = require('../services/createThumbnailAndExtract');
+const { dbGetEventById, dbUpdateEvent } = require('../services/eventServices');
 
-// upload a scanned map to the specified event for user :userid
-// :maptype is either course or route
-// :maptitle is the label to use for each part of multi-part maps (default: '')
-// app.post('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle'
+// confirm that the user has permission to upload a map (do not process image if rejected)
 const validateMapUploadPermission = (req, res, next) => {
   const allowedToUploadMap = ((req.user.role === 'admin')
   || (req.user.role === 'standard' && req.user._id.toString() === req.params.userid));
@@ -22,6 +20,11 @@ const validateMapUploadPermission = (req, res, next) => {
   }
   return next();
 };
+
+// upload a scanned map to the specified event for user :userid
+// :maptype is either course or route
+// :maptitle is the label to use for each part of multi-part maps (default: '')
+// app.post('/events/:eventid/maps/:userid/:maptype(course|route)/:maptitle'
 const postMap = (req, res) => {
   logReq(req);
   if (!req.file) {
@@ -62,10 +65,8 @@ const postMap = (req, res) => {
             const courseFilename = filenameBase.concat('-course.jpg');
             const overlayThreshold = 63;
             // returns a Promise resolving to an overlay (new PNG object) or null if unsuccessful
-            // console.log('calling createRouteOverlay');
             createRouteOverlay(routeFilename, courseFilename, overlayThreshold)
               .then((newOverlay) => {
-                // console.log('createRouteOverlay completed');
                 const overlayFilename = (newOverlay) ? filenameBase.concat('-overlay.png') : null;
                 if (newOverlay) {
                   newOverlay
@@ -73,40 +74,7 @@ const postMap = (req, res) => {
                     .pipe(fs.createWriteStream(overlayFilename));
                 }
                 // create thumbnail and extract
-                const thumbnailSize = 200; // fit within square box of this dimension in pixels
-                const extractWidth = 600; // pixels
-                const extractHeight = 100; // pixels
-                const thumbnail = newFileLocation.slice(0, -4).concat('-thumb').concat(newFileLocation.slice(-4));
-                const extract = newFileLocation.slice(0, -4).concat('-extract').concat(newFileLocation.slice(-4));
-                sharp(newFileLocation)
-                  .resize(thumbnailSize, thumbnailSize, { fit: 'inside' })
-                  .toFile(thumbnail, (thumbErr) => {
-                    sharp.cache(false); // stops really confusing behaviour if changing many times
-                    if (thumbErr) throw err;
-                  });
-                sharp(newFileLocation)
-                  .metadata()
-                  .then((metadata) => {
-                    const centreX = Math.floor(metadata.width / 2);
-                    const centreY = Math.floor(metadata.height / 2);
-                    // check to limit size of extract for small images
-                    // (although real maps are unlikely to be this small)
-                    const newWidth = Math.min(metadata.width, extractWidth);
-                    const newHeight = Math.min(metadata.height, extractHeight);
-                    return sharp(newFileLocation)
-                      .extract({
-                        left: centreX - Math.floor(newWidth / 2),
-                        top: centreY - Math.floor(newHeight / 2),
-                        width: newWidth,
-                        height: newHeight,
-                      })
-                      .toFile(extract, (extractErr) => {
-                        sharp.cache(false); // stops confusing behaviour if changing more than once!
-                        if (extractErr) throw err;
-                      });
-                  });
-                // const toPrint = data.toString('hex').match(/../g).join(' ').slice(0, 512);
-                // console.log(toPrint);
+                createThumbnailAndExtract(newFileLocation);
                 // const parsedQR = quickRouteParser.parse(data);
                 // console.log(JSON.stringify(parsedQR, null, 2));
                 const qRData = getQRData(data);
@@ -121,13 +89,13 @@ const postMap = (req, res) => {
                 }
                 const trackDistanceK = Math.floor(trackDistance) / 1000;
                 // console.log(JSON.stringify(qRData, null, 2));
-                return Event.findById(eventid).then((eventToUpdate) => {
+                return dbGetEventById(eventid).then((eventToUpdate) => {
                   const fieldsToUpdate = {};
                   const maptypeUpdated = maptype.concat('Updated');
                   const timeUpdated = new Date().getTime().toString();
                   let runnerExists = false;
                   const newRunners = eventToUpdate.runners.map((runner) => {
-                    if (runner.user.toString() === userid) {
+                    if (runner.user._id.toString() === userid) {
                       runnerExists = true;
                       let mapExists = false;
                       runner.maps.map((map) => {
@@ -229,65 +197,48 @@ const postMap = (req, res) => {
                       fieldsToUpdate.locLong = qRData.mapCentre.long;
                     }
                   }
-                  return Event.findByIdAndUpdate(eventid, { $set: fieldsToUpdate }, { new: true })
-                    .populate('owner', '_id displayName')
-                    .populate('organisedBy', '_id shortName')
-                    .populate('linkedTo', '_id displayName')
-                    .populate({
-                      path: 'runners.user',
-                      select: '_id active displayName fullName regNumber orisId profileImage visibility',
-                      populate: { path: 'memberOf', select: '_id shortName' },
-                    })
-                    .populate({
-                      path: 'runners.comments.author',
-                      select: '_id displayName fullName regNumber',
-                    })
-                    .select('-active -__v')
-                    .then((updatedEvent) => {
-                      // console.log('updatedEvent:', updatedEvent);
-                      logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
-                      recordActivity({
-                        actionType: 'EVENT_MAP_UPLOADED',
-                        actionBy: req.user._id,
-                        event: eventid,
-                        eventRunner: userid,
-                      });
-                      // filter out runners that the user isn't allowed to see
-                      const requestorRole = req.user.role;
-                      // console.log('requestorRole', requestorRole);
-                      const requestorId = (requestorRole === 'anonymous')
-                        ? null
-                        : req.user._id.toString();
-                      // console.log('requestorId', requestorId);
-                      const requestorClubs = (requestorRole === 'anonymous')
-                        ? null
-                        : req.user.memberOf.map(club => club._id.toString());
-                      const selectedRunners = updatedEvent.runners.filter((runner) => {
-                        // console.log('runner.user', runner.user);
-                        let canSee = false;
-                        if (requestorRole === 'admin' && runner.user.active) canSee = true;
-                        if (runner.visibility === 'public') canSee = true;
-                        if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
-                          if (runner.visibility === 'all') canSee = true;
-                          if (requestorId === runner.user._id.toString()) canSee = true;
-                          if (runner.visibility === 'club') {
-                            const commonClubs = runner.user.memberOf.filter((clubId) => {
-                              return requestorClubs.includes(clubId.toString());
-                            });
-                            if (commonClubs.length > 0) canSee = true;
-                          }
-                        }
-                        return canSee;
-                      });
-                      // console.log('runners, selectedRunners',
-                      // updatedEvent.runners.length, selectedRunners.length);
-                      const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
-                      return res.status(200).send(eventToSend);
-                    })
-                    .catch((updateEventErr) => {
-                      logger('error')('Error recording updated map references:', updateEventErr.message);
-                      return res.status(400).send({ error: updateEventErr.message });
+                  return dbUpdateEvent(eventid, fieldsToUpdate).then((updatedEvent) => {
+                    // console.log('updatedEvent:', updatedEvent);
+                    logger('success')(`Map added to ${updatedEvent.name} by ${req.user.email}.`);
+                    dbRecordActivity({
+                      actionType: 'EVENT_MAP_UPLOADED',
+                      actionBy: req.user._id,
+                      event: eventid,
+                      eventRunner: userid,
                     });
+                    // filter out runners that the user isn't allowed to see
+                    const requestorRole = req.user.role;
+                    // console.log('requestorRole', requestorRole);
+                    const requestorId = (requestorRole === 'anonymous')
+                      ? null
+                      : req.user._id.toString();
+                    // console.log('requestorId', requestorId);
+                    const requestorClubs = (requestorRole === 'anonymous')
+                      ? null
+                      : req.user.memberOf.map(club => club._id.toString());
+                    const selectedRunners = updatedEvent.runners.filter((runner) => {
+                      // console.log('runner.user', runner.user);
+                      let canSee = false;
+                      if (requestorRole === 'admin' && runner.user.active) canSee = true;
+                      if (runner.visibility === 'public') canSee = true;
+                      if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+                        if (runner.visibility === 'all') canSee = true;
+                        if (requestorId === runner.user._id.toString()) canSee = true;
+                        if (runner.visibility === 'club') {
+                          const commonClubs = runner.user.memberOf.filter((clubId) => {
+                            return requestorClubs.includes(clubId.toString());
+                          });
+                          if (commonClubs.length > 0) canSee = true;
+                        }
+                      }
+                      return canSee;
+                    });
+                    const eventToSend = { ...updatedEvent, runners: selectedRunners };
+                    return res.status(200).send(eventToSend);
+                  }).catch((updateEventErr) => {
+                    logger('error')('Error recording updated map references:', updateEventErr.message);
+                    return res.status(400).send({ error: updateEventErr.message });
+                  });
                 });
               });
           });
@@ -322,10 +273,9 @@ const deleteMap = (req, res) => {
     logger('error')('Error deleting map: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  return Event.findById(eventid)
-    .lean() // return normal object rather than mongoose object instance
+  return dbGetEventById(eventid)
     .then((foundEvent) => { // determine what changes need to be made
-      const foundRunner = foundEvent.runners.find(runner => runner.user.toString() === userid);
+      const foundRunner = foundEvent.runners.find(runner => runner.user._id.toString() === userid);
       if (!foundRunner) throw new Error('Runner does not exist.');
       const foundMap = foundRunner.maps.find(map => map.title === title);
       if (!foundMap) throw new Error('Map does not exist.');
@@ -378,60 +328,48 @@ const deleteMap = (req, res) => {
           newMapsArray.push(map);
         }
       });
-      // console.log('newMapsArray:', newMapsArray);
-      return Event.findOneAndUpdate(
-        { _id: eventid, 'runners.user': userid }, // identify and reference runner
-        { $set: { 'runners.$.maps': newMapsArray } }, // update map array
-        { new: true }, // return updated event to provide as API response
-      )
-        .populate('owner', '_id displayName')
-        .populate('organisedBy', '_id shortName')
-        .populate('linkedTo', '_id displayName')
-        .populate({
-          path: 'runners.user',
-          select: '_id active displayName fullName regNumber orisId profileImage visibility',
-          populate: { path: 'memberOf', select: '_id shortName' },
-        })
-        .populate({
-          path: 'runners.comments.author',
-          select: '_id displayName fullName regNumber',
-        })
-        .select('-active -__v')
-        .then((updatedEvent) => {
-          logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
-          recordActivity({
-            actionType: 'EVENT_MAP_DELETED',
-            actionBy: req.user._id,
-            event: eventid,
-            eventRunner: userid,
-          });
-          // filter out runners that the user isn't allowed to see
-          const requestorRole = req.user.role;
-          const requestorId = (requestorRole === 'anonymous')
-            ? null
-            : req.user._id.toString();
-          const requestorClubs = (requestorRole === 'anonymous')
-            ? null
-            : req.user.memberOf.map(club => club._id.toString());
-          const selectedRunners = updatedEvent.runners.filter((runner) => {
-            let canSee = false;
-            if (requestorRole === 'admin' && runner.user.active) canSee = true;
-            if (runner.visibility === 'public') canSee = true;
-            if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
-              if (runner.visibility === 'all') canSee = true;
-              if (requestorId === runner.user._id.toString()) canSee = true;
-              if (runner.visibility === 'club') {
-                const commonClubs = runner.user.memberOf.filter((clubId) => {
-                  return requestorClubs.includes(clubId.toString());
-                });
-                if (commonClubs.length > 0) canSee = true;
-              }
-            }
-            return canSee;
-          });
-          const eventToSend = { ...updatedEvent.toObject(), runners: selectedRunners };
-          return res.status(200).send(eventToSend);
+      const newRunners = foundEvent.runners.map((runner) => {
+        if (runner.user._id.toString() === userid) {
+          return { ...runner, maps: newMapsArray };
+        }
+        return runner;
+      });
+      const fieldsToUpdate = { runners: newRunners };
+      return dbUpdateEvent(eventid, fieldsToUpdate).then((updatedEvent) => {
+        logger('success')(`Map deleted from ${updatedEvent.name} by ${req.user.email}.`);
+        dbRecordActivity({
+          actionType: 'EVENT_MAP_DELETED',
+          actionBy: req.user._id,
+          event: eventid,
+          eventRunner: userid,
         });
+        // filter out runners that the user isn't allowed to see
+        const requestorRole = req.user.role;
+        const requestorId = (requestorRole === 'anonymous')
+          ? null
+          : req.user._id.toString();
+        const requestorClubs = (requestorRole === 'anonymous')
+          ? null
+          : req.user.memberOf.map(club => club._id.toString());
+        const selectedRunners = updatedEvent.runners.filter((runner) => {
+          let canSee = false;
+          if (requestorRole === 'admin' && runner.user.active) canSee = true;
+          if (runner.visibility === 'public') canSee = true;
+          if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+            if (runner.visibility === 'all') canSee = true;
+            if (requestorId === runner.user._id.toString()) canSee = true;
+            if (runner.visibility === 'club') {
+              const commonClubs = runner.user.memberOf.filter((clubId) => {
+                return requestorClubs.includes(clubId.toString());
+              });
+              if (commonClubs.length > 0) canSee = true;
+            }
+          }
+          return canSee;
+        });
+        const eventToSend = { ...updatedEvent, runners: selectedRunners };
+        return res.status(200).send(eventToSend);
+      });
     })
     .catch((updateEventErr) => {
       logger('error')('Error deleting map:', updateEventErr.message);

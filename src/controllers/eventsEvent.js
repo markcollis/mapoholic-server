@@ -1,16 +1,11 @@
 const { ObjectID } = require('mongodb');
-const mongoose = require('mongoose');
-
-const Club = require('../models/club');
-const Event = require('../models/oevent');
-const LinkedEvent = require('../models/linkedEvent');
 
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activityServices');
+const { dbRecordActivity } = require('../services/activityServices');
 const {
   validateClubIds,
-  validateLinkedEventIds,
+  validateEventLinkIds,
   validateUserId,
 } = require('../services/validateIds');
 const {
@@ -18,6 +13,17 @@ const {
   getOrisEventData,
   getOrisEventList,
 } = require('../services/orisAPI');
+const {
+  dbCreateClub,
+  dbGetClubs,
+} = require('../services/clubServices');
+const {
+  dbCreateEvent,
+  dbGetEventById,
+  dbGetEvents,
+  dbUpdateEvent,
+  dbDeleteEvent,
+} = require('../services/eventServices');
 
 // POST routes
 // create an event (event level fields)
@@ -41,8 +47,8 @@ const createEvent = (req, res) => {
     return res.status(400).send({ error: 'The date format required is a string of the form "YYYY-MM-DD".' });
   } // note: basic input validation, doesn't check for leap years so 2019-02-29 would pass
   // now check that the date/name combination doesn't already exist
-  return Event.findOne({ date: eventDate, name: eventName }).then((existingEvent) => {
-    if (existingEvent) {
+  return dbGetEvents({ date: eventDate, name: eventName }).then((matchingEvents) => {
+    if (matchingEvents.length > 0) {
       logger('error')(`Error creating event: The event ${eventName} on ${eventDate} already exists.`);
       return res.status(400).send({ error: `Error creating event: The event ${eventName} on ${eventDate} already exists.` });
     }
@@ -76,46 +82,24 @@ const createEvent = (req, res) => {
     const checkClubIds = (req.body.organisedBy && Array.isArray(req.body.organisedBy))
       ? validateClubIds(req.body.organisedBy)
       : Promise.resolve(false);
-    const checkLinkedEventIds = (req.body.linkedTo && Array.isArray(req.body.linkedTo))
-      ? validateLinkedEventIds(req.body.linkedTo)
+    const checkEventLinkIds = (req.body.linkedTo && Array.isArray(req.body.linkedTo))
+      ? validateEventLinkIds(req.body.linkedTo)
       : Promise.resolve(false);
-    return Promise.all([checkClubIds, checkLinkedEventIds]).then(([clubIds, linkedEventIds]) => {
+    return Promise.all([checkClubIds, checkEventLinkIds]).then(([clubIds, eventLinkIds]) => {
       if (clubIds) {
         fieldsToCreate.organisedBy = clubIds;
       }
-      if (linkedEventIds) {
-        fieldsToCreate.linkedTo = linkedEventIds;
+      if (eventLinkIds) {
+        fieldsToCreate.linkedTo = eventLinkIds;
       }
-      const newEvent = new Event(fieldsToCreate);
-      return newEvent.save((err, savedEvent) => {
-        savedEvent
-          .populate('owner', '_id displayName')
-          .populate('organisedBy', '_id shortName')
-          .populate('linkedTo', '_id displayName')
-          .populate({
-            path: 'runners.user',
-            select: '_id displayName fullName regNumber orisId profileImage visibility',
-            populate: { path: 'memberOf', select: '_id shortName' },
-          })
-          .populate({
-            path: 'runners.comments.author',
-            select: '_id displayName fullName regNumber',
-          })
-          .execPopulate()
-          .then(() => {
-            // add event reference to linkedEvents if there are any
-            LinkedEvent.updateMany({ _id: { $in: (linkedEventIds || []) } },
-              { $addToSet: { includes: savedEvent._id } })
-              .then(() => {
-                logger('success')(`${savedEvent.name} on ${savedEvent.date} created by ${req.user.email}.`);
-                recordActivity({
-                  actionType: 'EVENT_CREATED',
-                  actionBy: req.user._id,
-                  event: savedEvent._id,
-                });
-                return res.status(200).send(savedEvent);
-              });
-          });
+      return dbCreateEvent(fieldsToCreate).then((savedEvent) => {
+        logger('success')(`${savedEvent.name} on ${savedEvent.date} created by ${req.user.email}.`);
+        dbRecordActivity({
+          actionType: 'EVENT_CREATED',
+          actionBy: req.user._id,
+          event: savedEvent._id,
+        });
+        return res.status(200).send(savedEvent);
       });
     }).catch((err) => {
       logger('error')('Error creating event:', err.message);
@@ -135,10 +119,10 @@ const orisCreateEvent = (req, res) => {
       logger('error')('Error creating event from ORIS: multi-stage event parent');
       return res.status(400).send({ error: `This ORIS event ID is the parent of a multi-stage event. The individual events are ${includedEvents}.` });
     }
-    // ? later work once linkedEvent ready - add the following 'big picture' actions instead:
-    // 1. if Stages !== "0" create a linkedEvent record *instead* and then the events within
+    // Extra refinement to add in future:
+    // 1. if Stages !== "0" create a eventLink record *instead* and then the events within
     // it (Stage1, Stage2, ... Stage7 if not "0")
-    // 2. if ParentID !== null, create a linkedEvent record from that parent then the siblings
+    // 2. if ParentID !== null, create a eventLink record from that parent then the siblings
     // ORIS Data.ParentID, Data.Stages, Data.Stage1-7 have relevant information
     // also Data.Level.ShortName = ET (multi-day wrapper)
     const disciplineAndSportToType = {
@@ -188,22 +172,18 @@ const orisCreateEvent = (req, res) => {
       req.body.tags = [eventData.Level.NameCZ];
     }
     // check to see if clubs exist and, if so, get their id; otherwise create them
-    const firstClub = eventData.Org1.Abbr;
+    const firstClub = eventData.Org1.Abbr || false;
     const secondClub = eventData.Org2.Abbr || false;
-    return Club.find({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
-      // console.log('foundClubs:', foundClubs);
+    return dbGetClubs({ shortName: [firstClub, secondClub] }).then((foundClubs) => {
       const foundClubsAbbr = foundClubs.map(foundClub => foundClub.shortName);
       const foundClubsIds = foundClubs.map(foundClub => foundClub._id);
-      // console.log('foundClubsAbbr', foundClubsAbbr, 'foundClubsIds', foundClubsIds);
       const clubOneNeeded = firstClub && !foundClubsAbbr.includes(firstClub);
       const clubTwoNeeded = secondClub && !foundClubsAbbr.includes(secondClub);
       const checkOrisOne = (clubOneNeeded) ? getOrisClubData(firstClub) : Promise.resolve(false);
       const checkOrisTwo = (clubTwoNeeded) ? getOrisClubData(secondClub) : Promise.resolve(false);
       Promise.all([checkOrisOne, checkOrisTwo]).then((orisData) => {
-        // console.log('orisData:', orisData);
         const createClubs = orisData.map((clubData) => {
           if (!clubData) return Promise.resolve(false);
-          // console.log('clubData:', clubData);
           const fieldsToCreate = {
             owner: req.user._id,
             shortName: clubData.Abbr,
@@ -212,10 +192,9 @@ const orisCreateEvent = (req, res) => {
             country: 'CZE',
             website: clubData.WWW,
           };
-          const newClub = new Club(fieldsToCreate);
-          return newClub.save().then(() => {
-            logger('success')(`${newClub.shortName} created by ${req.user.email} alongside event.`);
-            return newClub;
+          return dbCreateClub(fieldsToCreate).then((createdClub) => {
+            logger('success')(`${createdClub.shortName} created by ${req.user.email} alongside event.`);
+            return createdClub;
           });
         });
         Promise.all(createClubs).then((createdClubs) => {
@@ -337,98 +316,85 @@ const getEventList = (req, res) => {
   if (req.query.locLat) {
     const lowLat = parseFloat(req.query.locLat.split('-')[0]) || 0;
     const highLat = parseFloat(req.query.locLat.split('-')[1]) || 90;
-    // console.log('low', low, 'high', high);
     eventSearchCriteria.locLat = { $gt: lowLat, $lt: highLat };
   }
   if (req.query.locLong) {
     const lowLong = parseFloat(req.query.locLong.split('-')[0]) || -180;
     const highLong = parseFloat(req.query.locLong.split('-')[1]) || 180;
-    // console.log('low', low, 'high', high);
     eventSearchCriteria.locLong = { $gt: lowLong, $lt: highLong };
   }
-  // console.log('eventSearchCriteria:', JSON.stringify(eventSearchCriteria));
-  Event.find(eventSearchCriteria)
-    .populate('owner', '_id displayName')
-    .populate('organisedBy', '_id shortName')
-    .populate('linkedTo', '_id displayName')
-    // .populate('runners', 'tags')
-    .populate('runners.user', '_id displayName memberOf active')
-    .select('-active -__v')
-    .then((events) => {
-      // process to reduce level of detail and exclude non-visible runners
-      const eventsSummary = events.map((foundEvent) => {
-        const eventDetails = {
-          _id: foundEvent._id,
-          orisId: foundEvent.orisId,
-          date: foundEvent.date,
-          name: foundEvent.name,
-          mapName: foundEvent.mapName,
-          locPlace: foundEvent.locPlace,
-          locCountry: foundEvent.locCountry,
-          locLat: foundEvent.locLat,
-          locLong: foundEvent.locLong,
-          locCornerSW: foundEvent.locCornerSW,
-          locCornerNW: foundEvent.locCornerNW,
-          locCornerNE: foundEvent.locCornerNE,
-          locCornerSE: foundEvent.locCornerSE,
-          organisedBy: foundEvent.organisedBy,
-          linkedTo: foundEvent.linkedTo,
-          types: foundEvent.types,
-          tags: foundEvent.tags,
-        };
-        if (foundEvent.runners.length > 0) {
-          const selectedRunners = foundEvent.runners.map((runner) => {
-            let canSee = false;
-            if (requestorRole === 'admin' && runner.user.active) canSee = true;
-            // deleted users remain in the runners array but should be ignored
-            if (runner.visibility === 'public') canSee = true;
-            if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
-              if (runner.visibility === 'all') canSee = true;
-              if (requestorId === runner.user._id.toString()) canSee = true;
-              if (runner.visibility === 'club') {
-                const commonClubs = runner.user.memberOf.filter((clubId) => {
-                  return requestorClubs.includes(clubId.toString());
-                });
-                // console.log('commonClubs', commonClubs);
-                if (commonClubs.length > 0) canSee = true;
-              }
-            }
-            if (canSee) {
-              const mapFiles = [];
-              runner.maps.forEach((map) => {
-                const { course, route } = map;
-                if (course && course !== '') {
-                  mapFiles.push(course);
-                } else if (route && route !== '') {
-                  mapFiles.push(route);
-                }
+  dbGetEvents(eventSearchCriteria).then((events) => {
+    // process to reduce level of detail and exclude non-visible runners
+    const eventsSummary = events.map((foundEvent) => {
+      const eventDetails = {
+        _id: foundEvent._id,
+        orisId: foundEvent.orisId,
+        date: foundEvent.date,
+        name: foundEvent.name,
+        mapName: foundEvent.mapName,
+        locPlace: foundEvent.locPlace,
+        locCountry: foundEvent.locCountry,
+        locLat: foundEvent.locLat,
+        locLong: foundEvent.locLong,
+        locCornerSW: foundEvent.locCornerSW,
+        locCornerNW: foundEvent.locCornerNW,
+        locCornerNE: foundEvent.locCornerNE,
+        locCornerSE: foundEvent.locCornerSE,
+        organisedBy: foundEvent.organisedBy,
+        linkedTo: foundEvent.linkedTo,
+        types: foundEvent.types,
+        tags: foundEvent.tags,
+      };
+      if (foundEvent.runners.length > 0) {
+        const selectedRunners = foundEvent.runners.map((runner) => {
+          let canSee = false;
+          if (requestorRole === 'admin' && runner.user.active) canSee = true;
+          // deleted users remain in the runners array but should be ignored
+          if (runner.visibility === 'public') canSee = true;
+          if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+            if (runner.visibility === 'all') canSee = true;
+            if (requestorId === runner.user._id.toString()) canSee = true;
+            if (runner.visibility === 'club') {
+              const commonClubs = runner.user.memberOf.filter((clubId) => {
+                return requestorClubs.includes(clubId.toString());
               });
-              const extractName = (mapFiles.length > 0)
-                ? mapFiles[0].slice(0, -4).concat('-extract').concat(mapFiles[0].slice(-4))
-                : null;
-              return {
-                user: runner.user._id,
-                displayName: runner.user.displayName,
-                courseTitle: runner.user.courseTitle,
-                numberMaps: runner.maps.length,
-                mapExtract: extractName,
-                tags: runner.tags,
-              };
+              if (commonClubs.length > 0) canSee = true;
             }
-            return false;
-          });
-          eventDetails.runners = selectedRunners.filter(runner => runner);
-          // eventDetails.totalRunners = eventDetails.runners.length;
-        }
-        return eventDetails;
-      });
-      logger('success')(`Returned list of ${eventsSummary.length} event(s).`);
-      return res.status(200).send(eventsSummary);
-    })
-    .catch((err) => {
-      logger('error')('Error getting list of events:', err.message);
-      return res.status(400).send(err.message);
+          }
+          if (canSee) {
+            const mapFiles = [];
+            runner.maps.forEach((map) => {
+              const { course, route } = map;
+              if (course && course !== '') {
+                mapFiles.push(course);
+              } else if (route && route !== '') {
+                mapFiles.push(route);
+              }
+            });
+            const extractName = (mapFiles.length > 0)
+              ? mapFiles[0].slice(0, -4).concat('-extract').concat(mapFiles[0].slice(-4))
+              : null;
+            return {
+              user: runner.user._id,
+              displayName: runner.user.displayName,
+              courseTitle: runner.user.courseTitle,
+              numberMaps: runner.maps.length,
+              mapExtract: extractName,
+              tags: runner.tags,
+            };
+          }
+          return false;
+        });
+        eventDetails.runners = selectedRunners.filter(runner => runner);
+      }
+      return eventDetails;
     });
+    logger('success')(`Returned list of ${eventsSummary.length} event(s).`);
+    return res.status(200).send(eventsSummary);
+  }).catch((err) => {
+    logger('error')('Error getting list of events:', err.message);
+    return res.status(400).send(err.message);
+  });
 };
 
 // retrieve full details for the specified event
@@ -448,54 +414,38 @@ const getEvent = (req, res) => {
     logger('error')('Error getting event details: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  return Event.findOne({ _id: eventid, active: true })
-    .populate('owner', '_id displayName')
-    .populate('organisedBy', '_id shortName')
-    .populate('linkedTo', '_id displayName')
-    .populate({
-      path: 'runners.user',
-      select: '_id active displayName fullName regNumber orisId profileImage visibility',
-      populate: { path: 'memberOf', select: '_id shortName' },
-    })
-    .populate({
-      path: 'runners.comments.author',
-      select: '_id displayName fullName active profileImage',
-    })
-    .select('-active -__v')
-    .then((foundEvent) => {
-      if (!foundEvent) {
-        logger('error')('Error getting event details: no event found.');
-        return res.status(404).send({ error: 'No event found.' });
-      }
-      const filteredEvent = foundEvent;
-      if (foundEvent.runners.length > 0) {
-        const selectedRunners = foundEvent.runners.map((runner) => {
-          let canSee = false;
-          if (requestorRole === 'admin' && runner.user.active) canSee = true;
-          if (runner.visibility === 'public') canSee = true;
-          if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
-            if (runner.visibility === 'all') canSee = true;
-            if (requestorId === runner.user._id.toString()) canSee = true;
-            if (runner.visibility === 'club') {
-              const commonClubs = runner.user.memberOf.filter((clubId) => {
-                return requestorClubs.includes(clubId.toString());
-              });
-              // console.log('commonClubs', commonClubs);
-              if (commonClubs.length > 0) canSee = true;
-            }
+  return dbGetEventById(eventid).then((foundEvent) => {
+    if (!foundEvent) {
+      logger('error')('Error getting event details: no event found.');
+      return res.status(404).send({ error: 'No event found.' });
+    }
+    const filteredEvent = foundEvent;
+    if (foundEvent.runners.length > 0) {
+      const selectedRunners = foundEvent.runners.map((runner) => {
+        let canSee = false;
+        if (requestorRole === 'admin' && runner.user.active) canSee = true;
+        if (runner.visibility === 'public') canSee = true;
+        if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+          if (runner.visibility === 'all') canSee = true;
+          if (requestorId === runner.user._id.toString()) canSee = true;
+          if (runner.visibility === 'club') {
+            const commonClubs = runner.user.memberOf.filter((clubId) => {
+              return requestorClubs.includes(clubId.toString());
+            });
+            if (commonClubs.length > 0) canSee = true;
           }
-          if (canSee) return runner;
-          return false;
-        });
-        filteredEvent.runners = selectedRunners.filter(runner => runner);
-      }
-      logger('success')(`Returned event details for ${foundEvent.name} (${foundEvent.date}).`);
-      return res.status(200).send(filteredEvent);
-    })
-    .catch((err) => {
-      logger('error')('Error getting event details:', err.message);
-      return res.status(400).send({ error: err.message });
-    });
+        }
+        if (canSee) return runner;
+        return false;
+      });
+      filteredEvent.runners = selectedRunners.filter(runner => runner);
+    }
+    logger('success')(`Returned event details for ${foundEvent.name} (${foundEvent.date}).`);
+    return res.status(200).send(filteredEvent);
+  }).catch((err) => {
+    logger('error')('Error getting event details:', err.message);
+    return res.status(400).send({ error: err.message });
+  });
 };
 
 // PATCH routes
@@ -520,26 +470,22 @@ const updateEvent = (req, res) => {
     } // note: basic input validation, doesn't check for leap years so 2019-02-29 would pass
   }
   // now check that the date/name combination doesn't already exist
-  return Event.findOne({ date: req.body.date, name: req.body.name }).then((existingEvent) => {
-    if (existingEvent && existingEvent._id.toString() !== eventid) {
+  return dbGetEvents({ date: req.body.date, name: req.body.name }).then((existingEvents) => {
+    if (existingEvents[0] && existingEvents[0]._id.toString() !== eventid) {
       logger('error')(`Error updating event: The event ${req.body.name} on ${req.body.date} already exists.`);
       return res.status(400).send({ error: `Error updating event: The event ${req.body.name} on ${req.body.date} already exists.` });
     }
     // now need to check database to identify owner and runners
-    return Event.findById(eventid).then((eventToUpdate) => {
+    return dbGetEventById(eventid).then((eventToUpdate) => {
       if (!eventToUpdate) {
         logger('error')('Error updating event: no matching event found.');
         return res.status(404).send({ error: 'Event could not be found.' });
       }
       const runnerIds = (eventToUpdate.runners.length === 0)
         ? []
-        : eventToUpdate.runners.map(runner => runner.user.toString());
-      const currentLinkedEvents = (eventToUpdate.linkedTo.length === 0)
-        ? []
-        : eventToUpdate.linkedTo.map(linkedEvent => linkedEvent.toString());
-      // console.log('currentLinkedEvents:', currentLinkedEvents);
+        : eventToUpdate.runners.map(runner => runner.user._id.toString());
       const allowedToUpdate = ((requestorRole === 'admin')
-      || (requestorRole === 'standard' && requestorId === eventToUpdate.owner.toString())
+      || (requestorRole === 'standard' && requestorId === eventToUpdate.owner._id.toString())
       || (requestorRole === 'standard' && runnerIds.includes(requestorId)));
       // console.log('eventToUpdate:', eventToUpdate);
       // console.log('requestorRole:', requestorRole);
@@ -547,7 +493,7 @@ const updateEvent = (req, res) => {
       // console.log('runnerIds:', runnerIds);
       // console.log('allowedToUpdate:', allowedToUpdate);
       if (allowedToUpdate) {
-        const fieldsToUpdate = { };
+        const fieldsToUpdate = {};
         const validFields = [
           // Note: it is not possible to add an ORIS event ID and auto-populate if
           // an event wasn't created from ORIS originally. If there is a demand for
@@ -580,71 +526,40 @@ const updateEvent = (req, res) => {
         const checkClubIds = (req.body.organisedBy && Array.isArray(req.body.organisedBy))
           ? validateClubIds(req.body.organisedBy)
           : Promise.resolve(false);
-        const checkLinkedEventIds = (req.body.linkedTo && Array.isArray(req.body.linkedTo))
-          ? validateLinkedEventIds(req.body.linkedTo)
+        const checkEventLinkIds = (req.body.linkedTo && Array.isArray(req.body.linkedTo))
+          ? validateEventLinkIds(req.body.linkedTo)
           : Promise.resolve(false);
         // only admin users can change a club's owner, need to check that ID is really a user
         const checkOwnerId = (req.body.owner && requestorRole === 'admin')
           ? validateUserId(req.body.owner)
           : Promise.resolve(false);
-        return Promise.all([checkClubIds, checkLinkedEventIds, checkOwnerId])
-          .then(([clubIds, linkedEventIds, ownerId]) => {
+        return Promise.all([checkClubIds, checkEventLinkIds, checkOwnerId])
+          .then(([clubIds, eventLinkIds, ownerId]) => {
             if (clubIds) {
               fieldsToUpdate.organisedBy = clubIds;
             }
-            if (linkedEventIds) {
-              fieldsToUpdate.linkedTo = linkedEventIds;
-            }
-            const newLinkedEvents = (linkedEventIds)
-              ? linkedEventIds.map(el => el.toString())
-              : eventToUpdate.linkedTo;
-            // console.log('newLinkedEvents:', newLinkedEvents);
-            const addedLinkedEventIds = newLinkedEvents
-              .filter(id => !currentLinkedEvents.includes(id));
-            const removedLinkedEventIds = currentLinkedEvents
-              .filter(id => !newLinkedEvents.includes(id));
-            // console.log('added:', addedLinkedEventIds, 'removed:', removedLinkedEventIds);
+            fieldsToUpdate.linkedTo = eventLinkIds || eventToUpdate.linkedTo;
+            const currentEventLinks = (eventToUpdate.linkedTo.length === 0)
+              ? []
+              : eventToUpdate.linkedTo.map(eventLink => eventLink._id.toString());
             if (ownerId) fieldsToUpdate.owner = req.body.owner;
-            // console.log('fieldsToUpdate:', fieldsToUpdate);
             const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
-            // console.log('fields to be updated:', numberOfFieldsToUpdate);
             if (numberOfFieldsToUpdate === 0) {
               logger('error')('Update event error: no valid fields to update.');
               return res.status(400).send({ error: 'No valid fields to update.' });
             }
-            return Event.findByIdAndUpdate(eventid, { $set: fieldsToUpdate }, { new: true })
-              .populate('owner', '_id displayName')
-              .populate('organisedBy', '_id shortName')
-              .populate('linkedTo', '_id displayName')
-              .populate({
-                path: 'runners.user',
-                select: '_id displayName fullName regNumber orisId profileImage visibility',
-                populate: { path: 'memberOf', select: '_id shortName' },
-              })
-              .populate({
-                path: 'runners.comments.author',
-                select: '_id displayName fullName regNumber',
-              })
-              .select('-active -__v')
+            // console.log('fieldsToUpdate', fieldsToUpdate);
+            return dbUpdateEvent(eventid, fieldsToUpdate, currentEventLinks)
               .then((updatedEvent) => {
-                // now change the Event references in relevant LinkedEvents
-                LinkedEvent.updateMany({ _id: { $in: (addedLinkedEventIds || []) } },
-                  { $addToSet: { includes: updatedEvent._id } })
-                  .then(() => {
-                    LinkedEvent.updateMany({ _id: { $in: (removedLinkedEventIds || []) } },
-                      { $pull: { includes: updatedEvent._id } })
-                      .then(() => {
-                        logger('success')(`${updatedEvent.name} (${updatedEvent.date}) updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-                        recordActivity({
-                          actionType: 'EVENT_UPDATED',
-                          actionBy: req.user._id,
-                          event: eventid,
-                        });
-                        return res.status(200).send(updatedEvent);
-                      });
-                  });
-              })
-              .catch((err) => {
+                logger('success')(`${updatedEvent.name} (${updatedEvent.date}) updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+                dbRecordActivity({
+                  actionType: 'EVENT_UPDATED',
+                  actionBy: req.user._id,
+                  event: eventid,
+                });
+                // console.log('updatedEvent', updatedEvent);
+                return res.status(200).send(updatedEvent);
+              }).catch((err) => {
                 logger('error')('Error updating event:', err.message);
                 return res.status(400).send({ error: err.message });
               });
@@ -672,7 +587,7 @@ const deleteEvent = (req, res) => {
     logger('error')('Error deleting event: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  return Event.findById(eventid).then((eventToDelete) => {
+  return dbGetEventById(eventid).then((eventToDelete) => {
     if (!eventToDelete) {
       logger('error')('Error deleting event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
@@ -681,53 +596,26 @@ const deleteEvent = (req, res) => {
     // (forcing the deletion of other runners before the event can go)
     const isAdmin = (requestorRole === 'admin');
     const isOwner = (requestorRole === 'standard'
-      && requestorId === eventToDelete.owner.toString());
-    // const hasPermissionToDelete = ((requestorRole === 'admin')
-    // || (requestorRole === 'standard' && requestorId === eventToDelete.owner.toString()));
+      && requestorId === eventToDelete.owner._id.toString());
     const noOtherRunners = (eventToDelete.runners.length === 0)
       || (eventToDelete.runners.filter((runner) => {
-        return (runner.user.toString() !== requestorId);
+        return (runner.user._id.toString() !== requestorId);
       }).length === 0);
     const ownerAlone = (isOwner && noOtherRunners);
-    // console.log('has permission:', hasPermissionToDelete, 'no others:', noOtherRunners);
     const allowedToDelete = isAdmin || ownerAlone;
-    // console.log('doesn\'t actually delete yet!');
-    // const allowedToDelete = false;
     if (allowedToDelete) {
-      const now = new Date();
-      const deletedAt = 'deleted:'.concat((`0${now.getDate()}`).slice(-2))
-        .concat((`0${(now.getMonth() + 1)}`).slice(-2))
-        .concat(now.getFullYear().toString())
-        .concat('@')
-        .concat((`0${now.getHours()}`).slice(-2))
-        .concat((`0${now.getMinutes()}`).slice(-2));
-      const newName = `${eventToDelete.name} ${deletedAt}`;
-      const newOrisId = (eventToDelete.orisId)
-        ? `${eventToDelete.orisId} ${deletedAt}`
-        : null;
-      return Event.findByIdAndUpdate(eventid,
-        { $set: { active: false, name: newName, orisId: newOrisId } },
-        { new: true })
-        .then((deletedEvent) => {
-          // console.log('deletedEvent:', deletedEvent);
-          const { _id: deletedEventId, name } = deletedEvent;
-          // delete any references in LinkedEvents
-          LinkedEvent.updateMany({},
-            { $pull: { includes: mongoose.Types.ObjectId(deletedEventId) } })
-            .then(() => {
-              logger('success')(`Successfully deleted event ${deletedEventId} (${name})`);
-              recordActivity({
-                actionType: 'EVENT_DELETED',
-                actionBy: req.user._id,
-                event: eventid,
-              });
-              return res.status(200).send(deletedEvent);
-            });
-        })
-        .catch((err) => {
-          logger('error')('Error deleting event:', err.message);
-          return res.status(400).send({ error: err.message });
+      return dbDeleteEvent(eventid).then((deletedEvent) => {
+        logger('success')(`Successfully deleted event ${eventid} (${deletedEvent.name})`);
+        dbRecordActivity({
+          actionType: 'EVENT_DELETED',
+          actionBy: req.user._id,
+          event: eventid,
         });
+        return res.status(200).send(deletedEvent);
+      }).catch((err) => {
+        logger('error')('Error deleting event:', err.message);
+        return res.status(400).send({ error: err.message });
+      });
     }
     logger('error')(`Error: ${req.user.email} not allowed to delete ${eventid}.`);
     return res.status(401).send({ error: 'Not allowed to delete this event.' });

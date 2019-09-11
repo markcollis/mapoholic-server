@@ -53,7 +53,7 @@ const oeventSchema = new mongoose.Schema({
       'TrailO', // ORIS TRAIL TrailO
       // ORIS S Training (event officials) Školení (ignore)
       // ORIS OB FootO (ignore)
-      // ORIS ET Multi-stage Etapový (flag as linkedEvent wrapper instead...)
+      // ORIS ET Multi-stage Etapový (flag as eventLink wrapper instead...)
       'Score',
       'Spanish Score',
       'non-standard', // i.e. either training or an event with an unusual format (e.g. some EPOs)

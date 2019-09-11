@@ -5,14 +5,14 @@ const path = require('path');
 
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activityServices');
+const { dbRecordActivity } = require('../services/activityServices');
 const { validateClubIds } = require('../services/validateIds');
 const { getOrisUserId } = require('../services/orisAPI');
 const {
-  deleteUserById,
-  getUserDetailsById,
-  getUserRecords,
-  updateUserById,
+  dbDeleteUser,
+  dbGetUserById,
+  dbGetUsers,
+  dbUpdateUser,
 } = require('../services/userServices');
 
 // retrieve a list of all users (incl ids) matching specified criteria
@@ -53,7 +53,7 @@ const getUserList = (req, res) => {
       });
     }
   }
-  getUserRecords(userSearchCriteria).then((userList) => {
+  dbGetUsers(userSearchCriteria).then((userList) => {
     logger('success')(`Returned list of ${userList.length} user(s).`);
     return res.status(200).send(userList);
   }, (err) => {
@@ -71,7 +71,7 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
   const requestorClubs = (requestorRole === 'anonymous')
     ? null
     : requestingUser.memberOf.map(club => club._id.toString());
-  return getUserDetailsById(userId)
+  return dbGetUserById(userId)
     .then((profile) => {
       if (!profile) return { searchError: true };
       const { visibility, _id, memberOf } = profile;
@@ -197,9 +197,9 @@ const updateUser = (req, res) => {
       const allowedToUpdate = ((requestorRole === 'admin')
         || (requestorRole === 'standard' && requestorId === id));
       if (allowedToUpdate) {
-        return updateUserById(id, fieldsToUpdate).then((updatedUser) => {
+        return dbUpdateUser(id, fieldsToUpdate).then((updatedUser) => {
           logger('success')(`${updatedUser.email} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-          recordActivity({
+          dbRecordActivity({
             actionType: 'USER_UPDATED',
             actionBy: req.user._id,
             user: id,
@@ -234,9 +234,9 @@ const deleteUser = (req, res) => {
   const allowedToDelete = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === id));
   if (allowedToDelete) {
-    return deleteUserById(id).then((deletedUser) => {
+    return dbDeleteUser(id).then((deletedUser) => {
       logger('success')(`Successfully deleted user ${deletedUser._id} (${deletedUser.email})`);
-      recordActivity({
+      dbRecordActivity({
         actionType: 'USER_DELETED',
         actionBy: req.user._id,
         user: req.params.id,
@@ -274,10 +274,10 @@ const postProfileImage = (req, res) => {
       .toFile(newFileLocation, (err) => {
         sharp.cache(false); // stops really confusing behaviour if changing more than once!
         if (err) throw err;
-        return updateUserById(req.params.id, { profileImage: newFileLocation })
+        return dbUpdateUser(req.params.id, { profileImage: newFileLocation })
           .then((updatedUser) => {
             logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
-            recordActivity({
+            dbRecordActivity({
               actionType: 'USER_UPDATED',
               actionBy: req.user._id,
               user: req.params.id,
@@ -300,7 +300,7 @@ const deleteProfileImage = (req, res) => {
     return res.status(401).send({ error: 'Not allowed to delete profile image for this user.' });
   }
   // delete the reference to it in the user document
-  return updateUserById(req.params.id, { profileImage: '' }).then((deletedUser) => {
+  return dbUpdateUser(req.params.id, { profileImage: '' }).then((deletedUser) => {
     // then delete the file
     if (!deletedUser.profileImage) {
       logger('error')(`Error: ${deletedUser.email} does not have a profile image.`);

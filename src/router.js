@@ -57,7 +57,7 @@ module.exports = (app) => {
   // delete the specified club (multiple deletion not supported)
   app.delete('/clubs/:id', requireAuth, Clubs.deleteClub);
 
-  // *** /events routes ***  [OEvent and LinkedEvent models]
+  // *** /events routes ***  [OEvent and EventLink models]
   // query string ids need to be more explicit as there are several types used
   // create an event (event level fields)
   app.post('/events', requireAuth, Events.createEvent);

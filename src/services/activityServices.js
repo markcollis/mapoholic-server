@@ -3,7 +3,7 @@
 const Activity = require('../models/activity');
 const logger = require('../services/logger');
 
-const recordActivity = (activity) => {
+const dbRecordActivity = (activity) => {
   const activityToLog = { ...activity, timestamp: new Date() };
   const newActivity = new Activity(activityToLog);
   return newActivity.save()
@@ -34,9 +34,9 @@ const recordActivity = (activity) => {
 //  EVENT_UPDATED, event
 //  EVENT_DELETED, event
 // eventsEventLink
-//   EVENT_LINK_CREATED, linkedEvent
-//   EVENT_LINK_UPDATED, linkedEvent
-//   EVENT_LINK_DELETED, linkedEvent
+//   EVENT_LINK_CREATED, eventLink
+//   EVENT_LINK_UPDATED, eventLink
+//   EVENT_LINK_DELETED, eventLink
 // eventsEventRunner
 //   EVENT_RUNNER_ADDED, event, eventRunner
 //   EVENT_RUNNER_UPDATED, event, eventRunner
@@ -48,14 +48,15 @@ const recordActivity = (activity) => {
 //  USER_UPDATED, user (includes uploading profile image)
 //  USER_DELETED, user
 
-const getActivityList = (searchCriteria, requestor, listLength) => {
+const dbGetActivities = (searchCriteria, requestor, listLength) => {
   return Activity.find(searchCriteria)
+    .lean()
     // 1. populate relevant data
     .populate('actionBy', '_id displayName visibility memberOf active')
     .populate('club', '_id shortName active')
     .populate('event', '_id date name active runners.user runners.visibility')
     .populate('eventRunner', '_id displayName visibility memberOf active')
-    .populate('linkedEvent', '_id displayName')
+    .populate('eventLink', '_id displayName')
     .populate('user', '_id displayName visibility memberOf active')
     // 2. filter based on who can see what
     .then((activities) => {
@@ -70,7 +71,7 @@ const getActivityList = (searchCriteria, requestor, listLength) => {
           club,
           event,
           eventRunner,
-          linkedEvent,
+          eventLink,
           user,
         } = activity;
         let include = false; // default - include relevant activity using conditions
@@ -99,7 +100,7 @@ const getActivityList = (searchCriteria, requestor, listLength) => {
             }
           }
         }
-        if (linkedEvent) { // no active flag for linkedEvent, null if it has been deleted
+        if (eventLink) { // no active flag for eventLink, null if it has been deleted
           if (actionType === 'EVENT_LINK_CREATED') include = true;
           if (actionType === 'EVENT_LINK_UPDATED') include = true;
         }
@@ -138,6 +139,6 @@ const getActivityList = (searchCriteria, requestor, listLength) => {
 };
 
 module.exports = {
-  recordActivity,
-  getActivityList,
+  dbRecordActivity,
+  dbGetActivities,
 };

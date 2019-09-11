@@ -1,13 +1,16 @@
 const { ObjectID } = require('mongodb');
-const mongoose = require('mongoose');
-const Event = require('../models/oevent');
-const LinkedEvent = require('../models/linkedEvent');
+
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activityServices');
+const { dbRecordActivity } = require('../services/activityServices');
+const { validateEventIds } = require('../services/validateIds');
 const {
-  validateEventIds,
-} = require('../services/validateIds');
+  dbCreateEventLink,
+  dbGetEventLinkById,
+  dbGetEventLinks,
+  dbUpdateEventLink,
+  dbDeleteEventLink,
+} = require('../services/eventLinkServices');
 
 // create a new event linkage between the specified events
 const createEventLink = (req, res) => {
@@ -24,8 +27,8 @@ const createEventLink = (req, res) => {
     logger('error')('Error creating event link: No name provided.');
     return res.status(400).send({ error: 'You must provide a name for the event link.' });
   }
-  return LinkedEvent.findOne({ displayName: eventLinkName }).then((existingLinkedEvent) => {
-    if (existingLinkedEvent) {
+  return dbGetEventLinks({ displayName: eventLinkName }).then((existingLinks) => {
+    if (existingLinks.length > 0) {
       logger('error')(`Error creating event link: The event link ${eventLinkName} already exists.`);
       return res.status(400).send({ error: `Error creating event link: The event link ${eventLinkName} already exists.` });
     }
@@ -41,26 +44,14 @@ const createEventLink = (req, res) => {
         return res.status(400).send({ error: 'Error creating event link: No valid event IDs found' });
       }
       fieldsToCreate.includes = eventIds;
-      const newLinkedEvent = new LinkedEvent(fieldsToCreate);
-      return newLinkedEvent.save((err, savedLinkedEvent) => {
-        savedLinkedEvent
-          .populate('includes', '_id name date')
-          .execPopulate()
-          .then(() => {
-            // now add the linkedEvent reference to the events concerned
-            Event.updateMany({ _id: { $in: eventIds } },
-              { $addToSet: { linkedTo: savedLinkedEvent._id } },
-              { new: true })
-              .then(() => {
-                logger('success')(`${savedLinkedEvent.displayName} created by ${req.user.email}.`);
-                recordActivity({
-                  actionType: 'EVENT_LINK_CREATED',
-                  actionBy: req.user._id,
-                  linkedEvent: savedLinkedEvent._id,
-                });
-                return res.status(200).send(savedLinkedEvent);
-              });
-          });
+      return dbCreateEventLink(fieldsToCreate).then((savedEventLink) => {
+        logger('success')(`${savedEventLink.displayName} created by ${req.user.email}.`);
+        dbRecordActivity({
+          actionType: 'EVENT_LINK_CREATED',
+          actionBy: req.user._id,
+          eventLink: savedEventLink._id,
+        });
+        return res.status(200).send(savedEventLink);
       });
     }).catch((err) => {
       logger('error')('Error creating event link:', err.message);
@@ -83,17 +74,13 @@ const getEventLinks = (req, res) => {
       eventLinkSearchCriteria.includes = null;
     }
   }
-  LinkedEvent.find(eventLinkSearchCriteria)
-    .populate('includes', '_id name date')
-    .select('-__v')
-    .then((linkedEvents) => {
-      logger('success')(`Returned list of ${linkedEvents.length} event link(s).`);
-      return res.status(200).send(linkedEvents);
-    })
-    .catch((err) => {
-      logger('error')('Error getting list of event links:', err.message);
-      return res.status(400).send(err.message);
-    });
+  dbGetEventLinks(eventLinkSearchCriteria).then((eventLinks) => {
+    logger('success')(`Returned list of ${eventLinks.length} event link(s).`);
+    return res.status(200).send(eventLinks);
+  }).catch((err) => {
+    logger('error')('Error getting list of event links:', err.message);
+    return res.status(400).send(err.message);
+  });
 };
 
 // update the specified link between events (multiple amendment not supported)
@@ -109,15 +96,14 @@ const updateEventLink = (req, res) => {
     logger('error')('Error updating event link: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  return LinkedEvent.findById(eventlinkid).then((linkedEventToUpdate) => {
-    if (!linkedEventToUpdate) {
+  return dbGetEventLinkById(eventlinkid).then((eventLinkToUpdate) => {
+    if (!eventLinkToUpdate) {
       logger('error')('Error updating event link: no matching event found.');
       return res.status(404).send({ error: 'Event link could not be found.' });
     }
-    const currentIncludes = linkedEventToUpdate.includes.map(el => el.toString());
-    // console.log('includes before editing:', currentIncludes);
+    const currentIncludes = eventLinkToUpdate.includes.map(el => el._id.toString());
     const fieldsToUpdate = {};
-    if (req.body.displayName && req.body.displayName !== linkedEventToUpdate.displayName) {
+    if (req.body.displayName && req.body.displayName !== eventLinkToUpdate.displayName) {
       fieldsToUpdate.displayName = req.body.displayName;
     }
     const checkEventIds = (req.body.includes && Array.isArray(req.body.includes))
@@ -125,40 +111,21 @@ const updateEventLink = (req, res) => {
       : Promise.resolve(false);
     return checkEventIds.then((eventIds) => {
       if (eventIds) fieldsToUpdate.includes = eventIds;
-      const newIncludes = (eventIds)
-        ? eventIds.map(el => el.toString())
-        : linkedEventToUpdate.includes;
-      // console.log('eventIds to be new includes:', newIncludes);
-      const addedEventIds = newIncludes.filter(eventId => !currentIncludes.includes(eventId));
-      const removedEventIds = currentIncludes.filter(eventId => !newIncludes.includes(eventId));
-      // console.log('added, removed:', addedEventIds, removedEventIds);
       const numberOfFieldsToUpdate = Object.keys(fieldsToUpdate).length;
       if (numberOfFieldsToUpdate === 0) {
         logger('error')('Update event link error: no valid fields to update.');
         return res.status(400).send({ error: 'No valid fields to update.' });
       }
-      return LinkedEvent.findByIdAndUpdate(eventlinkid, { $set: fieldsToUpdate }, { new: true })
-        .populate('includes', '_id name date')
-        .select('-__v')
-        .then((updatedLinkedEvent) => {
-          // now change the linkedEvent references in relevant Events
-          Event.updateMany({ _id: { $in: (addedEventIds || []) } },
-            { $addToSet: { linkedTo: mongoose.Types.ObjectId(updatedLinkedEvent._id) } })
-            .then(() => {
-              Event.updateMany({ _id: { $in: (removedEventIds || []) } },
-                { $pull: { linkedTo: mongoose.Types.ObjectId(updatedLinkedEvent._id) } })
-                .then(() => {
-                  logger('success')(`${updatedLinkedEvent.displayName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-                  recordActivity({
-                    actionType: 'EVENT_LINK_UPDATED',
-                    actionBy: req.user._id,
-                    linkedEvent: eventlinkid,
-                  });
-                  return res.status(200).send(updatedLinkedEvent);
-                });
-            });
-        })
-        .catch((err) => {
+      return dbUpdateEventLink(eventlinkid, fieldsToUpdate, currentIncludes)
+        .then((updatedEventLink) => {
+          logger('success')(`${updatedEventLink.displayName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
+          dbRecordActivity({
+            actionType: 'EVENT_LINK_UPDATED',
+            actionBy: req.user._id,
+            eventLink: eventlinkid,
+          });
+          return res.status(200).send(updatedEventLink);
+        }).catch((err) => {
           logger('error')('Error updating linked event:', err.message);
           return res.status(400).send({ error: err.message });
         });
@@ -175,35 +142,25 @@ const deleteEventLink = (req, res) => {
     logger('error')('Error deleting event link: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  // only admin users are allowed to delete linkedEvents
+  // only admin users are allowed to delete eventLinks
   if (requestorRole === 'admin') {
-    return LinkedEvent.findById(eventlinkid).then((linkedEventToDelete) => {
-      if (!linkedEventToDelete) {
+    return dbGetEventLinkById(eventlinkid).then((eventLinkToDelete) => {
+      if (!eventLinkToDelete) {
         logger('error')('Error deleting event link: no matching event link found.');
         return res.status(404).send({ error: 'Event link could not be found.' });
       }
-      return LinkedEvent.deleteOne({ _id: eventlinkid }).then((deletion) => {
-        if (deletion.deletedCount === 1) {
-          // should now go through and delete all references from Event.linkedTo
-          return Event.updateMany({ _id: { $in: (linkedEventToDelete.includes || []) } },
-            { $pull: { linkedTo: mongoose.Types.ObjectId(linkedEventToDelete._id) } })
-            .then(() => {
-              logger('success')(`Successfully deleted event link ${linkedEventToDelete._id} (${linkedEventToDelete.displayName})`);
-              recordActivity({
-                actionType: 'EVENT_LINK_DELETED',
-                actionBy: req.user._id,
-                linkedEvent: eventlinkid,
-              });
-              return res.status(200).send(linkedEventToDelete);
-            });
-        }
-        logger('error')('Error deleting event link: deletedCount not 1');
-        return res.status(400).send({ error: 'Error deleting event link: deletedCount not 1' });
-      })
-        .catch((err) => {
-          logger('error')('Error deleting event link:', err.message);
-          return res.status(400).send({ error: err.message });
+      return dbDeleteEventLink(eventlinkid).then(() => {
+        logger('success')(`Successfully deleted event link ${eventLinkToDelete._id} (${eventLinkToDelete.displayName})`);
+        dbRecordActivity({
+          actionType: 'EVENT_LINK_DELETED',
+          actionBy: req.user._id,
+          eventLink: eventlinkid,
         });
+        return res.status(200).send(eventLinkToDelete);
+      });
+    }).catch((err) => {
+      logger('error')('Error deleting event link:', err.message);
+      return res.status(400).send({ error: err.message });
     });
   }
   logger('error')(`Error: ${req.user.email} not allowed to delete ${eventlinkid}.`);

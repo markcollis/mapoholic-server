@@ -1,11 +1,11 @@
 const jwt = require('jwt-simple');
 
 const logger = require('../services/logger');
-const { recordActivity } = require('../services/activityServices');
+const { dbRecordActivity } = require('../services/activityServices');
 const {
-  createUserRecord,
-  getUserRecords,
-  updateUserById,
+  dbCreateUser,
+  dbGetUsers,
+  dbUpdateUser,
 } = require('../services/userServices');
 
 const tokenForUser = (user) => {
@@ -33,7 +33,7 @@ const signup = (req, res) => {
   // default if no display name explicitly provided
   const displayNameToAdd = (!displayName || displayName === '') ? email : displayName;
   // does a user with the given email or displayName exist?
-  return getUserRecords({ $or: [{ email }, { displayName: displayNameToAdd }] })
+  return dbGetUsers({ $or: [{ email }, { displayName: displayNameToAdd }] })
     .then((matchingUsers) => {
       // if one does, return an error
       if (matchingUsers.length > 0) {
@@ -46,10 +46,10 @@ const signup = (req, res) => {
       }
       // if not, create the user
       const fieldsToCreate = { email, password, displayName: displayNameToAdd };
-      return createUserRecord(fieldsToCreate).then((savedUser) => {
+      return dbCreateUser(fieldsToCreate).then((savedUser) => {
         // return token if successful
         logger('success')(`New user created: ${savedUser._id} (${savedUser.email}).`);
-        recordActivity({
+        dbRecordActivity({
           actionType: 'USER_CREATED',
           actionBy: savedUser._id,
           user: savedUser._id,
@@ -93,7 +93,7 @@ const passwordChange = (req, res) => {
       logger('error')('Password change error: insufficient permissions.');
       return res.status(400).send({ error: 'You are not allowed to change this user\'s password.' });
     }
-    return updateUserById(targetId, { password: newPassword })
+    return dbUpdateUser(targetId, { password: newPassword })
       .then((updatedUser) => {
         logger('success')(`Password for ${updatedUser.email} changed by ${req.user.email}.`);
         return res.status(200).send({ status: 'Password changed successfully.' });

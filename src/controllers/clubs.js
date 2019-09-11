@@ -2,14 +2,14 @@ const { ObjectID } = require('mongodb');
 
 const logger = require('../services/logger');
 const logReq = require('./logReq');
-const { recordActivity } = require('../services/activityServices');
+const { dbRecordActivity } = require('../services/activityServices');
 const { validateUserId } = require('../services/validateIds');
 const {
-  createClubRecord,
-  deleteClubById,
-  getClubById,
-  getClubRecords,
-  updateClubById,
+  dbCreateClub,
+  dbDeleteClub,
+  dbGetClubById,
+  dbGetClubs,
+  dbUpdateClub,
 } = require('../services/clubServices');
 const { getOrisClubData } = require('../services/orisAPI');
 
@@ -60,9 +60,9 @@ const createClub = (req, res) => {
       // console.log('Nothing retrieved from ORIS.');
     }
   }).then(() => {
-    createClubRecord(fieldsToCreate).then((createdClub) => {
+    dbCreateClub(fieldsToCreate).then((createdClub) => {
       logger('success')(`${createdClub.shortName} created by ${req.user.email}.`);
-      recordActivity({
+      dbRecordActivity({
         actionType: 'CLUB_CREATED',
         actionBy: creatorId,
         club: createdClub._id,
@@ -96,7 +96,7 @@ const getClubList = (req, res) => {
       }
     }
   });
-  getClubRecords(clubSearchCriteria).then((clubs) => {
+  dbGetClubs(clubSearchCriteria).then((clubs) => {
     logger('success')(`Returned list of ${clubs.length} club(s).`);
     return res.status(200).send(clubs);
   }).catch((err) => {
@@ -120,7 +120,7 @@ const updateClub = (req, res) => {
     return res.status(400).send({ error: 'Invalid ID.' });
   }
   // now need to check database to identify owner
-  return getClubById(id).then((clubToUpdate) => {
+  return dbGetClubById(id).then((clubToUpdate) => {
     if (!clubToUpdate) {
       logger('error')('Error updating club: no matching club found.');
       return res.status(404).send({ error: 'Club could not be found.' });
@@ -172,9 +172,9 @@ const updateClub = (req, res) => {
             logger('error')('Update club error: no valid fields to update.');
             return res.status(400).send({ error: 'No valid fields to update.' });
           }
-          return updateClubById(id, fieldsToUpdate).then((updatedClub) => {
+          return dbUpdateClub(id, fieldsToUpdate).then((updatedClub) => {
             logger('success')(`${updatedClub.shortName} updated by ${req.user.email} (${numberOfFieldsToUpdate} field(s)).`);
-            recordActivity({
+            dbRecordActivity({
               actionType: 'CLUB_UPDATED',
               actionBy: req.user._id,
               club: id,
@@ -207,7 +207,7 @@ const deleteClub = (req, res) => {
     logger('error')('Error deleting club: invalid club id.');
     return res.status(400).send({ error: 'Invalid ID.' });
   }
-  return getClubById(id).then((clubToDelete) => {
+  return dbGetClubById(id).then((clubToDelete) => {
     if (!clubToDelete) {
       logger('error')('Error deleting club: no matching club found.');
       return res.status(404).send({ error: 'Club could not be found.' });
@@ -215,9 +215,9 @@ const deleteClub = (req, res) => {
     const allowedToDelete = ((requestorRole === 'admin')
     || (requestorRole === 'standard' && requestorId === clubToDelete.owner.toString()));
     if (allowedToDelete) {
-      return deleteClubById(id).then((deletedClub) => {
+      return dbDeleteClub(id).then((deletedClub) => {
         logger('success')(`Successfully deleted club ${deletedClub._id} (${deletedClub.shortName})`);
-        recordActivity({
+        dbRecordActivity({
           actionType: 'CLUB_DELETED',
           actionBy: req.user._id,
           club: id,

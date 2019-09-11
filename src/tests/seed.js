@@ -4,7 +4,7 @@ const jwt = require('jwt-simple');
 const User = require('../models/user');
 const Club = require('../models/club');
 // const OEvent = require('../models/oevent');
-// const LinkedEvent = require('../models/linkedEvent');
+// const EventLink = require('../models/eventLink');
 
 // generate ObjectIDs up front so they can be used for cross-referencing when required
 const userOneId = new ObjectID();
@@ -113,9 +113,9 @@ module.exports = {
   initUserTokens,
   initClubs,
   // initOEvents,
-  // initLinkedEvents,
+  // initEventLinks,
   populateUsers, //           independent
   populateClubs, //           requires user_id
   // populateOEvents, //      requires user_id, links to club_id
-  // populateLinkedEvents, // interdependent links to oevent_id and from oevent.linkedTo
+  // populateEventLinks, // interdependent links to oevent_id and from oevent.linkedTo
 };
