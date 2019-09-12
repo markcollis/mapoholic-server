@@ -1,8 +1,44 @@
 // Functions concerned solely or primarily with event data (oevent model)
-
 const mongoose = require('mongoose');
+
 const Event = require('../models/oevent');
 const EventLink = require('../models/eventLink');
+const { prefixImagePath } = require('../services/prefixImagePath');
+
+// prefix all image paths in an event record
+const prefixEventImagePaths = (rawEvent) => {
+  return {
+    ...rawEvent,
+    runners: rawEvent.runners.map((runner) => {
+      return {
+        ...runner,
+        user: (runner.user.profileImage)
+          ? {
+            ...runner.user,
+            profileImage: prefixImagePath(runner.user.profileImage),
+          }
+          : { ...runner.user },
+        comments: runner.comments.map((comment) => {
+          return {
+            ...comment,
+            author: {
+              ...comment.author,
+              profileImage: prefixImagePath(comment.author.profileImage),
+            },
+          };
+        }),
+        maps: runner.maps.map((eachMap) => {
+          return {
+            ...eachMap,
+            course: prefixImagePath(eachMap.course),
+            route: prefixImagePath(eachMap.route),
+            overlay: prefixImagePath(eachMap.overlay),
+          };
+        }),
+      };
+    }),
+  };
+};
 
 // add a new event
 const dbCreateEvent = (fieldsToCreate) => {
@@ -22,12 +58,11 @@ const dbCreateEvent = (fieldsToCreate) => {
         select: '_id displayName fullName regNumber',
       })
       .execPopulate()
+      .then(populatedEvent => prefixEventImagePaths(populatedEvent))
       .then((createdEvent) => {
         // add event reference to eventLinks if there are any
         if (fieldsToCreate.linkedTo) {
           const eventLinksToUpdate = fieldsToCreate.linkedTo.map(el => el.toString());
-          // console.log('fieldsToCreate.linkedTo:', fieldsToCreate.linkedTo);
-          // console.log('eventLinksToUpdate:', eventLinksToUpdate);
           EventLink.updateMany({ _id: { $in: (eventLinksToUpdate) } },
             { $addToSet: { includes: createdEvent._id } })
             .then(() => {
@@ -61,7 +96,8 @@ const dbGetEventById = (id) => {
       path: 'runners.comments.author',
       select: '_id displayName fullName active profileImage',
     })
-    .select('-active -__v');
+    .select('-active -__v')
+    .then(foundEvent => prefixEventImagePaths(foundEvent));
 };
 
 // get matching event records
@@ -96,9 +132,10 @@ const dbUpdateEvent = (id, fieldsToUpdate, currentEventLinks = []) => {
     })
     .populate({
       path: 'runners.comments.author',
-      select: '_id displayName fullName regNumber',
+      select: '_id displayName fullName profileImage regNumber',
     })
     .select('-__v')
+    .then(populatedEvent => prefixEventImagePaths(populatedEvent))
     .then((updatedEvent) => {
       // now change the Event references in relevant EventLinks
       if (addedEventLinkIds.length > 0 || removedEventLinkIds.length > 0) {
@@ -164,7 +201,8 @@ const dbAddRunner = (eventId, runnerDetails) => {
       path: 'runners.comments.author',
       select: '_id displayName fullName regNumber',
     })
-    .select('-active -__v');
+    .select('-active -__v')
+    .then(populatedEvent => prefixEventImagePaths(populatedEvent));
 };
 
 const dbUpdateRunner = (eventId, runnerUserId, runnerDetails) => {
@@ -189,7 +227,8 @@ const dbUpdateRunner = (eventId, runnerUserId, runnerDetails) => {
       path: 'runners.comments.author',
       select: '_id displayName fullName regNumber',
     })
-    .select('-active -__v');
+    .select('-active -__v')
+    .then(populatedEvent => prefixEventImagePaths(populatedEvent));
 };
 
 const dbDeleteRunner = (eventId, runnerUserId) => {
@@ -211,7 +250,8 @@ const dbDeleteRunner = (eventId, runnerUserId) => {
       path: 'runners.comments.author',
       select: '_id displayName fullName regNumber',
     })
-    .select('-active -__v');
+    .select('-active -__v')
+    .then(populatedEvent => prefixEventImagePaths(populatedEvent));
 };
 
 const dbAddComment = (eventId, runnerId, comment) => {
@@ -222,9 +262,14 @@ const dbAddComment = (eventId, runnerId, comment) => {
   )
     .lean()
     .populate({
+      path: 'runners.user',
+      select: '_id',
+    })
+    .populate({
       path: 'runners.comments.author',
-      select: '_id displayName fullName regNumber',
-    });
+      select: '_id displayName fullName profileImage regNumber',
+    })
+    .then(populatedEvent => prefixEventImagePaths(populatedEvent));
 };
 
 const dbUpdateComment = (eventId, runnerId, commentId, newText) => {
@@ -244,9 +289,14 @@ const dbUpdateComment = (eventId, runnerId, commentId, newText) => {
   )
     .lean()
     .populate({
+      path: 'runners.user',
+      select: '_id',
+    })
+    .populate({
       path: 'runners.comments.author',
-      select: '_id displayName fullName regNumber',
-    });
+      select: '_id displayName fullName profileImage regNumber',
+    })
+    .then(populatedEvent => prefixEventImagePaths(populatedEvent));
 };
 
 const dbDeleteComment = (eventId, runnerId, commentId) => {
@@ -257,9 +307,14 @@ const dbDeleteComment = (eventId, runnerId, commentId) => {
   )
     .lean()
     .populate({
+      path: 'runners.user',
+      select: '_id',
+    })
+    .populate({
       path: 'runners.comments.author',
-      select: '_id displayName fullName regNumber',
-    });
+      select: '_id displayName fullName profileImage regNumber',
+    })
+    .then(populatedEvent => prefixEventImagePaths(populatedEvent));
 };
 
 module.exports = {

@@ -52,7 +52,7 @@ const postComment = (req, res) => {
       logger('success')(`Posted comment in ${updatedEvent.name} (${updatedEvent.date}).`);
       // want to return just the relevant comments array
       const runnerToSend = updatedEvent.runners
-        .find(runner => runner.user.toString() === userid);
+        .find(runner => runner.user._id.toString() === userid);
       const commentsToSend = runnerToSend.comments;
       const newCommentId = commentsToSend[(commentsToSend.length - 1)]._id;
       dbRecordActivity({
@@ -129,7 +129,7 @@ const updateComment = (req, res) => {
         comment: commentid,
       });
       const runnerToSend = updatedEvent.runners
-        .find(runner => runner.user.toString() === userid);
+        .find(runner => runner.user._id.toString() === userid);
       const commentsToSend = runnerToSend.comments;
       return res.status(200).send(commentsToSend); // don't send full event
     });
@@ -193,7 +193,7 @@ const deleteComment = (req, res) => {
         comment: commentid,
       });
       const runnerToSend = updatedEvent.runners
-        .find(runner => runner.user.toString() === userid);
+        .find(runner => runner.user._id.toString() === userid);
       const commentsToSend = runnerToSend.comments;
       return res.status(200).send(commentsToSend); // don't send full event
     });

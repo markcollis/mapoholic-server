@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const Event = require('../models/oevent');
 const User = require('../models/user');
 
+const { prefixImagePath } = require('../services/prefixImagePath');
+
 // add a new user
 const dbCreateUser = (fieldsToCreate) => {
   const newUser = new User(fieldsToCreate);
@@ -14,7 +16,10 @@ const dbGetUserById = (id) => {
   return User.findOne({ _id: id, active: true }) // inactive users should not be visible through API
     .lean()
     .populate('memberOf')
-    .select('-password -active -__v');
+    .select('-password -active -__v')
+    .then((user) => {
+      return { ...user, profileImage: prefixImagePath(user.profileImage) };
+    });
 };
 
 // get matching user records
@@ -32,7 +37,8 @@ const dbGetUsers = (searchCriteria) => {
           displayName: profile.displayName,
           fullName: profile.fullName,
           memberOf: profile.memberOf,
-          profileImage: profile.profileImage || '',
+          // profileImage: profile.profileImage || '',
+          profileImage: prefixImagePath(profile.profileImage) || '',
           role: profile.role,
           joined: profile.createdAt,
         };
@@ -46,7 +52,10 @@ const dbUpdateUser = (id, fieldsToUpdate) => {
   return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
     .lean()
     .populate('memberOf', 'shortName')
-    .select('-password');
+    .select('-password')
+    .then((user) => {
+      return { ...user, profileImage: prefixImagePath(user.profileImage) };
+    });
 };
 
 // delete a user record and references to it in Events
