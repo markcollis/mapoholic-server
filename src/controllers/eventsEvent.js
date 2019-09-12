@@ -345,7 +345,7 @@ const getEventList = (req, res) => {
         types: foundEvent.types,
         tags: foundEvent.tags,
       };
-      if (foundEvent.runners.length > 0) {
+      if (foundEvent.runners && foundEvent.runners.length > 0) {
         const selectedRunners = foundEvent.runners.map((runner) => {
           let canSee = false;
           if (requestorRole === 'admin' && runner.user.active) canSee = true;
