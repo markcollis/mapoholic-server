@@ -108,7 +108,8 @@ const dbGetEvents = (searchCriteria) => {
     .populate('organisedBy', '_id shortName')
     .populate('linkedTo', '_id displayName')
     .populate('runners.user', '_id displayName memberOf active')
-    .select('-active -__v');
+    .select('-active -__v')
+    .then(foundEvents => foundEvents.map(eachEvent => prefixImagePath(eachEvent)));
 };
 
 // update an event record
