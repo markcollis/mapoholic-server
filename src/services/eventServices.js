@@ -109,7 +109,24 @@ const dbGetEvents = (searchCriteria) => {
     .populate('linkedTo', '_id displayName')
     .populate('runners.user', '_id displayName memberOf active')
     .select('-active -__v')
-    .then(foundEvents => foundEvents.map(eachEvent => prefixImagePath(eachEvent)));
+    .then(foundEvents => foundEvents.map((rawEvent) => {
+      return {
+        ...rawEvent,
+        runners: rawEvent.runners.map((runner) => {
+          return {
+            ...runner,
+            maps: runner.maps.map((eachMap) => {
+              return {
+                ...eachMap,
+                course: prefixImagePath(eachMap.course),
+                route: prefixImagePath(eachMap.route),
+                overlay: prefixImagePath(eachMap.overlay),
+              };
+            }),
+          };
+        }),
+      };
+    }));
 };
 
 // update an event record
