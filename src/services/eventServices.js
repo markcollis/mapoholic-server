@@ -58,7 +58,11 @@ const dbCreateEvent = (fieldsToCreate) => {
         select: '_id displayName fullName regNumber',
       })
       .execPopulate()
-      .then(populatedEvent => prefixEventImagePaths(populatedEvent))
+      .then((populatedEvent) => {
+        console.log('populatedEvent', populatedEvent);
+        const { _doc: eventObject } = populatedEvent;
+        return prefixEventImagePaths(eventObject);
+      })
       .then((createdEvent) => {
         // add event reference to eventLinks if there are any
         if (fieldsToCreate.linkedTo) {
