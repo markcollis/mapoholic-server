@@ -47,16 +47,25 @@ const postMap = (req, res) => {
   const newFileLocation = path.join('images', 'maps', eventid, req.file.path.split('/').pop());
   // first make sure that the eventid folder exists
   return fs.mkdir(path.join('images', 'maps', eventid), (mkdirErr) => {
-    if (mkdirErr && mkdirErr.code !== 'EEXIST') throw mkdirErr;
+    if (mkdirErr && mkdirErr.code !== 'EEXIST') {
+      logger('error')(`Error creating directory images/maps/${eventid}: ${mkdirErr.message}`);
+      return res.status(400).send({ error: 'Filesystem error.' });
+    }
     // check that there isn't already a file with the same name (i.e. maptitle has been used
     // before in the context of this map, even if it is not it's current 'title')
-    fs.access(newFileLocation, (accessFileErr) => {
+    return fs.access(newFileLocation, (accessFileErr) => {
       if (accessFileErr && accessFileErr.code === 'ENOENT') {
         // i.e. if we get an error that the file doesn't exist, go ahead and rename
         return fs.rename(req.file.path, newFileLocation, (renameErr) => {
-          if (renameErr) throw renameErr;
-          return fs.readFile(newFileLocation, (err, data) => {
-            if (err) throw err;
+          if (renameErr) {
+            logger('error')(`Error renaming ${req.file.path} to ${newFileLocation}: ${renameErr.message}`);
+            return res.status(400).send({ error: 'Filesystem error.' });
+          }
+          return fs.readFile(newFileLocation, (readFileErr, data) => {
+            if (readFileErr) {
+              logger('error')(`Error reading ${newFileLocation}: ${readFileErr.message}`);
+              return res.status(400).send({ error: 'Filesystem error.' });
+            }
             // Try to create overlay:
             // will return null if files don't exist, are different sizes, etc.
             // for now, don't worry about confirming through API that overlay has been created
@@ -65,7 +74,7 @@ const postMap = (req, res) => {
             const courseFilename = filenameBase.concat('-course.jpg');
             const overlayThreshold = 63;
             // returns a Promise resolving to an overlay (new PNG object) or null if unsuccessful
-            createRouteOverlay(routeFilename, courseFilename, overlayThreshold)
+            return createRouteOverlay(routeFilename, courseFilename, overlayThreshold)
               .then((newOverlay) => {
                 const overlayFilename = (newOverlay) ? filenameBase.concat('-overlay.png') : null;
                 if (newOverlay) {
@@ -284,24 +293,51 @@ const deleteMap = (req, res) => {
       foundRunner.maps.forEach((map) => {
         // console.log('map:', map);
         if (map.title === title) {
-          // first deal with the files...
           //  1. extract filename
-          const fileLocation = map[maptype];
+          const fileLocationElements = map[maptype].split('/').slice(-4);
+          const fileLocation = path.join(...fileLocationElements);
           //  2. delete thumbnail and extract
           const thumbnailLocation = fileLocation.slice(0, -4)
             .concat('-thumb').concat(fileLocation.slice(-4));
           fs.unlink(thumbnailLocation, (delThumbErr) => {
-            if (delThumbErr) throw delThumbErr;
+            if (delThumbErr) {
+              if (delThumbErr.code === 'ENOENT') {
+                logger('warning')(`Can not delete thumbnail at ${thumbnailLocation} as it doesn't exist`);
+              // It didn't exist so can't be deleted
+              } else {
+                logger('error')(`Error deleting thumbnail at ${thumbnailLocation}: ${delThumbErr.message}`);
+                // log error but continue with deletion from the database,
+                // issues with local filesystem will need to be reviewed separately
+              }
+            }
           });
           const extractLocation = fileLocation.slice(0, -4)
             .concat('-extract').concat(fileLocation.slice(-4));
           fs.unlink(extractLocation, (delExtractErr) => {
-            if (delExtractErr) throw delExtractErr;
+            if (delExtractErr) {
+              if (delExtractErr.code === 'ENOENT') {
+                logger('warning')(`Can not delete extract at ${extractLocation} as it doesn't exist`);
+              // It didn't exist so can't be deleted
+              } else {
+                logger('error')(`Error deleting extract at ${extractLocation}: ${delExtractErr.message}`);
+                // log error but continue with deletion from the database,
+                // issues with local filesystem will need to be reviewed separately
+              }
+            }
           });
           //  3. delete overlay if it exists
-          if (map.overlay && map.overlay !== '') {
+          if (map.overlay) {
             fs.unlink(map.overlay, (delOverlayErr) => {
-              if (delOverlayErr) throw delOverlayErr;
+              if (delOverlayErr) {
+                if (delOverlayErr.code === 'ENOENT') {
+                  logger('warning')(`Can not delete overlay at ${map.overlay} as it doesn't exist`);
+                // It didn't exist so can't be deleted
+                } else {
+                  logger('error')(`Error deleting overlay at ${map.overlay}: ${delOverlayErr.message}`);
+                  // log error but continue with deletion from the database,
+                  // issues with local filesystem will need to be reviewed separately
+                }
+              }
             });
           }
           //  4. rename main with -deletedAt- extension
@@ -315,14 +351,18 @@ const deleteMap = (req, res) => {
           const newFileLocation = fileLocation.slice(0, -4)
             .concat(deletedAt).concat(fileLocation.slice(-4));
           fs.rename(fileLocation, newFileLocation, (renameErr) => {
-            if (renameErr) throw renameErr;
+            if (renameErr) {
+              logger('error')(`Error renaming ${fileLocation} to ${newFileLocation}: ${renameErr.message}`);
+              // log error but continue with deletion from the database,
+              // issues with local filesystem will need to be reviewed separately
+            }
           });
 
-          // ...then the associated record
+          // 5. delete the associated database record
           if (foundMap[otherMapType] && foundMap[otherMapType] !== '') {
             newMapsArray.push({ ...map, [maptype]: null, overlay: '' });
           } else {
-            // console.log('*** need to delete whole map from array ***');
+            // do nothing, need to delete whole map from array
           }
         } else {
           newMapsArray.push(map);

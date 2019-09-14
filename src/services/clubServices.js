@@ -10,7 +10,10 @@ const User = require('../models/user');
 const dbCreateClub = (fieldsToCreate) => {
   const newClub = new Club(fieldsToCreate);
   return newClub.save().then((createdClub) => {
-    return createdClub.populate('owner', '_id displayName').execPopulate();
+    return createdClub
+      .populate('owner', '_id displayName')
+      .select('-__v')
+      .execPopulate();
   }).catch((err) => {
     if (err.message.slice(0, 6) === 'E11000') {
       const duplicate = err.message.split('"')[1];
@@ -56,7 +59,7 @@ const dbDeleteClub = (id) => {
     const newShortName = `${clubToDelete.shortName} ${deletedAt}`;
     return Club.findByIdAndUpdate(id,
       { $set: { active: false, shortName: newShortName } },
-      { new: true }).then((deletedClub) => {
+      { new: true }).select('-__v').then((deletedClub) => {
       // now remove all references from User.memberOf
       return User.updateMany({ memberOf: mongoose.Types.ObjectId(id) },
         { $pull: { memberOf: mongoose.Types.ObjectId(id) } }).then(() => {

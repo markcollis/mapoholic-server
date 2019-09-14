@@ -57,9 +57,9 @@ const dbCreateEvent = (fieldsToCreate) => {
         path: 'runners.comments.author',
         select: '_id displayName fullName regNumber',
       })
+      .select('-__v')
       .execPopulate()
       .then((populatedEvent) => {
-        console.log('populatedEvent', populatedEvent);
         const { _doc: eventObject } = populatedEvent;
         return prefixEventImagePaths(eventObject);
       })

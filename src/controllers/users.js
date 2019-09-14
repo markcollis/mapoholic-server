@@ -273,7 +273,10 @@ const postProfileImage = (req, res) => {
       .resize(200, 200, { fit: 'contain', background: 'white' })
       .toFile(newFileLocation, (err) => {
         sharp.cache(false); // stops really confusing behaviour if changing more than once!
-        if (err) throw err;
+        if (err) {
+          logger('error')(`Error saving file to ${newFileLocation}: ${err.message}`);
+          return res.status(400).send({ error: 'Error processing profile image.' });
+        }
         return dbUpdateUser(req.params.id, { profileImage: newFileLocation })
           .then((updatedUser) => {
             logger('success')(`Profile image added to ${updatedUser.email} by ${req.user.email}.`);
@@ -310,7 +313,16 @@ const deleteProfileImage = (req, res) => {
       // then delete the file
       const fileToDelete = path.join('images', 'avatars', userToUpdate.profileImage.split('/').pop());
       return fs.unlink(fileToDelete, (err) => {
-        if (err) throw err;
+        if (err) {
+          if (err.code === 'ENOENT') {
+            logger('warning')(`Can not delete profile image at ${fileToDelete} as it doesn't exist`);
+          // It didn't exist so can't be deleted
+          } else {
+            logger('error')(`Error deleting profile image at ${fileToDelete}: ${err.message}`);
+            // log error but continue with deletion from the database,
+            // issues with local filesystem will need to be reviewed separately
+          }
+        }
         logger('success')(`Profile image deleted from ${userToUpdate.email} by ${req.user.email}.`);
         return res.status(200).send({ status: `Profile image deleted from ${userToUpdate.email} by ${req.user.email}.` });
       });

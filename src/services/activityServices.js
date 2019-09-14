@@ -58,6 +58,7 @@ const dbGetActivities = (searchCriteria, requestor, listLength) => {
     .populate('eventRunner', '_id displayName visibility memberOf active')
     .populate('eventLink', '_id displayName')
     .populate('user', '_id displayName visibility memberOf active')
+    .select('-__v')
     // 2. filter based on who can see what
     .then((activities) => {
       const requestorId = requestor._id.toString();

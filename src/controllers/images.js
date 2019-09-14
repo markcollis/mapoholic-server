@@ -77,15 +77,19 @@ const convertPNG = (req, res, next) => {
     return sharp(path).toFormat('jpeg').toFile(newPath).then((info) => {
       // console.log('File converted successfully');
       req.file.path = newPath; // point eventMap at new file
-      fs.unlink(path, (deleteErr) => {
+      return fs.unlink(path, (deleteErr) => {
         // console.log('Error deleting PNG:', deleteErr);
-        if (deleteErr) throw deleteErr;
+        if (deleteErr) {
+          logger('error')(`Error deleting ${path}: ${deleteErr.message}`);
+          return res.status(400).send({ error: 'Filesystem error converting PNG to JPG.' });
+        }
+        return next();
       });
-      return next();
     })
       .catch((conversionErr) => {
+        logger('error')(`Error converting PNG to JPG: ${conversionErr.message}`);
+        return res.status(400).send({ error: 'Internal error converting PNG to JPG.' });
         // console.log('Error in file conversion:', conversionErr);
-        throw conversionErr;
       });
   }
   return next();
