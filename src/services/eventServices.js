@@ -57,7 +57,6 @@ const dbCreateEvent = (fieldsToCreate) => {
         path: 'runners.comments.author',
         select: '_id displayName fullName regNumber',
       })
-      .select('-__v')
       .execPopulate()
       .then((populatedEvent) => {
         const { _doc: eventObject } = populatedEvent;

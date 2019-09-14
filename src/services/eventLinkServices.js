@@ -12,7 +12,6 @@ const dbCreateEventLink = (fieldsToCreate) => {
     return createdLink
       .populate('includes', '_id name date')
       .execPopulate()
-      .select('-__v')
       .then(() => {
         return Event.updateMany({ _id: { $in: createdLink.includes } },
           { $addToSet: { linkedTo: createdLink._id } },

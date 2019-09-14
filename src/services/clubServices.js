@@ -12,7 +12,6 @@ const dbCreateClub = (fieldsToCreate) => {
   return newClub.save().then((createdClub) => {
     return createdClub
       .populate('owner', '_id displayName')
-      .select('-__v')
       .execPopulate();
   }).catch((err) => {
     if (err.message.slice(0, 6) === 'E11000') {
