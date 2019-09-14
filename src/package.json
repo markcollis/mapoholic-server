@@ -1,7 +1,8 @@
 {
-  "name": "omapfolder-server",
-  "version": "0.0.1",
-  "description": "",
+  "name": "mapoholic-server",
+  "version": "1.0.0",
+  "license": "ISC",
+  "description": "Back end for MapOholic orienteering map database",
   "main": "index.js",
   "scripts": {
     "start": "export NODE_ENV=\"development\" && node index.js",

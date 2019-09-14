@@ -12,6 +12,7 @@ const dbCreateEventLink = (fieldsToCreate) => {
     return createdLink
       .populate('includes', '_id name date')
       .execPopulate()
+      .select('-__v')
       .then(() => {
         return Event.updateMany({ _id: { $in: createdLink.includes } },
           { $addToSet: { linkedTo: createdLink._id } },
@@ -40,7 +41,8 @@ const dbGetEventLinks = (searchCriteria) => {
 
 // update an event link record
 const dbUpdateEventLink = (id, fieldsToUpdate, currentIncludes) => {
-  const newIncludes = fieldsToUpdate.includes.map(el => el.toString()) || [];
+  const newIncludes = (fieldsToUpdate.includes
+    && fieldsToUpdate.includes.map(el => el.toString())) || [];
   const addedEventIds = newIncludes.filter(eventId => !currentIncludes.includes(eventId));
   const removedEventIds = currentIncludes.filter(eventId => !newIncludes.includes(eventId));
   // console.log('currentIncludes, newIncludes, added, removed',

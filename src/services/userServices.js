@@ -52,7 +52,7 @@ const dbUpdateUser = (id, fieldsToUpdate) => {
   return User.findByIdAndUpdate(id, { $set: fieldsToUpdate }, { new: true })
     .lean()
     .populate('memberOf', 'shortName')
-    .select('-password')
+    .select('-password -__v')
     .then((user) => {
       return { ...user, profileImage: prefixImagePath(user.profileImage) };
     });
