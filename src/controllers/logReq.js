@@ -1,8 +1,8 @@
-// detailed logging of request to use across all controllers during development
+// detailed logging of request to assist development
+// disable in production to avoid excessively large log file
 const logger = require('../services/logger');
 
-const ENABLE = true; // turn on/off completely
-
+const ENABLE = false; // turn on/off completely
 
 module.exports = (req) => {
   if (ENABLE) {

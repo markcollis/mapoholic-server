@@ -8,21 +8,21 @@ mongoose.connect(process.env.MONGODB_URI, {
   useFindAndModify: false,
 });
 mongoose.connection.on('connected', () => {
-  logger('success')(new Date(), '\n -> Mongoose connected to', process.env.MONGODB_URI);
+  logger('success')('-> Mongoose connected to', process.env.MONGODB_URI);
 });
 mongoose.connection.on('disconnected', () => {
-  logger('error')(new Date(), '\n -> Mongoose disconnected from', process.env.MONGODB_URI);
+  logger('error')('-> Mongoose disconnected from', process.env.MONGODB_URI);
 });
 mongoose.connection.on('error', (err) => {
   if (err.message.match(/failed to connect to server .* on first connect/)) {
-    logger('fatalError')(new Date(), '\n -> Mongoose unable to connect to database, it is running?');
+    logger('fatalError')('-> Mongoose unable to connect to database, it is running?');
     process.exit(0);
   }
-  logger('error')(new Date(), '\n -> Mongoose error:', err.message);
+  logger('error')('-> Mongoose error:', err.message);
 });
 process.on('SIGINT', () => {
   mongoose.connection.close(() => {
-    logger('fatalError')(new Date(), '\n -> Mongoose disconnected on application termination');
+    logger('fatalError')('-> Mongoose disconnected on application termination');
     process.exit(0);
   });
 });

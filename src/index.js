@@ -67,6 +67,7 @@ app.use((err, req, res, next) => {
 // app.use(cors()); // middleware: support CORS requests from anywhere (OK for dev)
 // app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }));
 app.use('/images', express.static(path.join(__dirname, 'images')));
 router(app);
 
