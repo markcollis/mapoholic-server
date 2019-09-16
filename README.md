@@ -26,7 +26,7 @@ All textual data, including image paths, is stored in a remote MongoDB database.
 
 There are five Mongoose models, with appropriate cross-referencing between them, which define users, clubs, events, linked groups of events and a record of significant actions.
 
-The pivotal model is that representing an event, which is organised by one or more clubs, and attended by a number of runners (users), each of whom can upload a number of maps. See the [models]('src/models') folder for full definitions.
+The pivotal model is that representing an event, which is organised by one or more clubs, and attended by a number of runners (users), each of whom can upload a number of maps. See the [models]('https://github.com/markcollis/mapoholic-server/tree/master/src/models') folder for full definitions.
 
 Image files are stored on the local filesystem, with their path being stored in the database. Before being processed, image files are written to /images/upload. Profile images are then stored in /images/avatars as a file named after the relevant userId. The more numerous map images are stored in /images/maps in directories named after the relevant eventId.
 
@@ -43,10 +43,10 @@ The API provides the following endpoints. Authentication is token-based, request
 <br>Create a user account
 <br>Response: auth token (JWT)
 
-```bash
+```
 curl -d 'email=example@example.com&password=password' http://localhost:3090/users
 ```
-```json
+```
 {
   "token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg"
 }
@@ -56,11 +56,10 @@ curl -d 'email=example@example.com&password=password' http://localhost:3090/user
 <br>Log in to an existing user account
 <br>Response: auth token (JWT)
 
-```bash
+```
 curl -d 'email=example@example.com&password=newPassword' http://localhost:3090/users/login
 ```
-**response to do**
-```json
+```
 {
   "token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1Njg0NTQ3OTQ3Njh9.wtUbVHuQ6AN94eY94s0C0nmc8aShLxvuIVx5BvtrJus"
 }
@@ -70,10 +69,10 @@ curl -d 'email=example@example.com&password=newPassword' http://localhost:3090/u
 <br>Retrieve a list of all users, matching specified criteria if provided
 <br>Response: array of user objects with summary details (JSON)
 
-```bash
+```
 curl http://localhost:3090/users/public
 ```
-```json
+```
 [
   {
     "_id":"5d7b56f3da12cb4cae3ecb00",
@@ -99,10 +98,10 @@ curl http://localhost:3090/users/public
 <br>Retrieve full details for the specified user
 <br>Response: user object with full details (JSON)
 
-```bash
+```
 curl http://localhost:3090/users/public/5d7b56f3da12cb4cae3ecb00
 ```
-```json
+```
 {
   "_id":"5d7b56f3da12cb4cae3ecb00",
   "role":"standard",
@@ -126,10 +125,10 @@ curl http://localhost:3090/users/public/5d7b56f3da12cb4cae3ecb00
 <br>Reset password of specified user
 <br>Response: success message
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'currentPassword=password&newPassword=newPassword' http://localhost:3090/users/5d7b56f3da12cb4cae3ecb00/password
 ```
-```json
+```
 {
   "status":"Password changed successfully."
 }
@@ -139,7 +138,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Upload profile image for specified user
 <br>Response: URL for uploaded profile image
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -H 'Content-Type: multipart/form-data' -F 'upload=@pic.jpg' -X POST http://localhost:3090/users/5d7b56f3da12cb4cae3ecb00/profileImage
 ```
 ```plain
@@ -150,10 +149,10 @@ http://localhost:3090/images/avatars/5d7b56f3da12cb4cae3ecb00.jpg
 <br>Retrieve a list of all users, matching specified criteria if provided
 <br>Response: array of user objects with summary details (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/users
 ```
-```json
+```
 [
   {
     "_id":"5d7b56f3da12cb4cae3ecb00",
@@ -179,10 +178,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve full details for the currently logged in user
 <br>Response: user object with full details (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/users/me
 ```
-```json
+```
 {
   "_id":"5d7b56f3da12cb4cae3ecb00",
   "role":"standard",
@@ -205,10 +204,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve full details for the specified user
 <br>Response: user object with full details (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/users/5d7b56f3da12cb4cae3ecb00
 ```
-```json
+```
 {
   "_id":"5d7b56f3da12cb4cae3ecb00",
   "role":"standard",
@@ -231,10 +230,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Update the specified user
 <br>Response: updated user object with full details (JSON)
 
-```bash
+```
 curl -X PATCH -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'visibility=public&about="I am an example."' http://localhost:3090/users/5d7b56f3da12cb4cae3ecb00
 ```
-```json
+```
 {
   "_id":"5d7b56f3da12cb4cae3ecb00",
   "role":"standard",
@@ -257,11 +256,10 @@ curl -X PATCH -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ
 <br>Delete the specified user
 <br>Response: Deleted user object with full details (JSON)
 
-```bash
+```
 curl -X DELETE -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/users/5d7b56f3da12cb4cae3ecb00
 ```
-**response to do**
-```json
+```
 {
   "_id":"5d7b56f3da12cb4cae3ecb00",
   "role":"standard",
@@ -285,10 +283,10 @@ curl -X DELETE -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.ey
 <br>Delete profile image of the specified user
 <br>Response: success message
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X DELETE http://localhost:3090/users/5d7b56f3da12cb4cae3ecb00/profileImage
 ```
-```json
+```
 {
   "status":"Profile image deleted from example@example.com by example@example.com."
 }
@@ -301,11 +299,11 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve a list of all clubs, matching specified criteria if provided
 <br>Response: array of club objects (JSON)
 
-```bash
+```
 curl http://localhost:3090/clubs
 
 ```
-```json
+```
 [
   {
     "_id":"5d7b671cda12cb4cae3ecb05",
@@ -331,10 +329,10 @@ curl http://localhost:3090/clubs
 <br>Create a club (attempting to automatically populate missing details for Czech clubs from their abbreviation via ORIS)
 <br>Response: created club object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'shortName=DKP&country=CZE'  http://localhost:3090/clubs
 ```
-```json
+```
 {
   "fullName":"Oddíl OB Kotlářka",
   "orisId":"27",
@@ -356,10 +354,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Update the specified club (attempting to automatically populate missing details for Czech clubs via ORIS)
 <br>Response: updated club object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'website=https://obkotlarka.cz' -X PATCH http://localhost:3090/clubs/5d7b671cda12cb4cae3ecb05
 ```
-```json
+```
 {
   "_id":"5d7b671cda12cb4cae3ecb05",
   "fullName":"Oddíl OB Kotlářka",
@@ -380,10 +378,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Delete the specified club
 <br>Response: deleted club object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X DELETE http://localhost:3090/clubs/5d7b671cda12cb4cae3ecb05
 ```
-```json
+```
 {
   "fullName":"Oddíl OB Kotlářka",
   "orisId":"27",
@@ -407,10 +405,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 
 **GET** /events/public
 
-```bash
+```
 curl http://localhost:3090/events/public
 ```
-```json
+```
 [
   {
     "_id":"5d7bc03180fba060b7306359",
@@ -440,10 +438,10 @@ curl http://localhost:3090/events/public
 
 **GET** /events/:eventid/public
 
-```bash
+```
 curl http://localhost:3090/events/5d7bc03180fba060b7306359/public
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -489,10 +487,10 @@ curl http://localhost:3090/events/5d7bc03180fba060b7306359/public
 <br>Create an event
 <br>Response: created event object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'name="Example Trophy 2019"&date=2019-09-14&locPlace=Utopia&organisedBy=5d7bb10a17ce0670050a415d' http://localhost:3090/events
 ```
-```json
+```
 {
   "organisedBy":[],
   "linkedTo":[],
@@ -522,10 +520,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Create a new event using ORIS API data for *ORIS event id*
 <br>Response: created event object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X POST http://localhost:3090/events/oris/4739
 ```
-```json
+```
 {
   "organisedBy":[{
     "_id":"5cf11d454245b2113ddbd03c",
@@ -565,10 +563,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Add the current user as a runner to the specified event
 <br>Response: updated event object with new runner added (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X POST http://localhost:3090/events/5d7bc03180fba060b7306359/maps
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -614,11 +612,11 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Add the current user as a runner to the specified event, populating course details and results by calling the ORIS API
 <br>Response: updated event object with new runner added (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X POST http://localhost:3090/events/5d7bc2b980fba060b730635b/oris
 ```
 *\*example@example.com has borrowed my ORIS user id here to demonstrate auto-populate*
-```json
+```
 {
   "_id":"5d7bc2b980fba060b730635b",
   "organisedBy":[{"_id":"5cf11d454245b2113ddbd03c","shortName":"KAM"}],
@@ -708,10 +706,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Upload a scanned map for the specified runner to the specified event; either course or route must be specified as the type of map, while the optional maptitle is the label to use for each part of multi-part map sets
 <br>Response: updated event object with new map reference added (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -H 'Content-Type: multipart/form-data' -F 'upload=@map.jpg' -X POST http://localhost:3090/events/5d7bc03180fba060b7306359/maps/5d7b56f3da12cb4cae3ecb00/course
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -771,10 +769,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Post a new comment against the specified runner's map in the specified event
 <br>Response: updated comments object (JSON) *[not complete event]*
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'text="This is an insightful comment."' http://localhost:3090/events/5d7bc03180fba060b7306359/comments/5d7b56f3da12cb4cae3ecb00
 ```
-```json
+```
 [{
   "_id":"5d7bf5a60f55ee69d7338393",
   "author":{
@@ -794,10 +792,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve a list of all events, matching specified criteria if provided [may include events without *maps* visible to the current user]
 <br>Response: array of event objects with summary details (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/events?date=2019-09
 ```
-```json
+```
 [
   {
     "_id":"5d7bc03180fba060b7306359",
@@ -829,10 +827,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve full details for the specified event
 <br>Response: event object with full details (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/events/5d7bc03180fba060b7306359
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -876,11 +874,11 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve a list of all events in ORIS that the current user has entered (to be used to provide a list to select from before calling POST /events/oris/:oriseventid)
 <br>Response: array of ORIS event details (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/events/oris?datefrom=2019-09-01
 ```
 *\*example@example.com has borrowed my ORIS user id here*
-```json
+```
 [{
   "orisEntryId":"1448517","orisClassId":"113068","orisEventId":"4738","date":"2019-09-07","class":"H40B","name":"Žebříček B-Čechy západ","place":"Krhanice, Dolní Požáry"},
   {"orisEntryId":"1448518","orisClassId":"113104","orisEventId":"4739","date":"2019-09-08","class":"H40B","name":"Žebříček B-Čechy západ","place":"Kamenice, osada Těptín"},
@@ -891,10 +889,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Update the specified event
 <br>Response: updated event object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'mapName="The Enchanted Forest"' -X PATCH http://localhost:3090/events/5d7bc03180fba060b7306359
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -942,10 +940,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Update the specified runner and map data
 <br>Response: updated event object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'courseTitle=Long' -X PATCH http://localhost:3090/events/5d7bc03180fba060b7306359/maps/5d7b56f3da12cb4cae3ecb00
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -994,10 +992,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Edit the specified comment
 <br>Response: updated comments object (JSON) *[not complete event]*
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'text="This is an insightful comment, which has now been updated"' -X PATCH http://localhost:3090/events/5d7bc03180fba060b7306359/comments/5d7b56f3da12cb4cae3ecb00/5d7bf5a60f55ee69d7338393
 ```
-```json
+```
 [{
   "_id":"5d7bf5a60f55ee69d7338393",
   "author":{
@@ -1017,10 +1015,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Delete the specified event
 <br>Response: deleted event object (JSON)
 
-```bash
+```
 
 ```
-```json
+```
 
 ```
 
@@ -1028,10 +1026,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Delete the specified runner and associated maps from an event
 <br>Response: updated event object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X DELETE http://localhost:3090/events/5d7bc03180fba060b7306359/maps/5d7b56f3da12cb4cae3ecb00
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -1061,10 +1059,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Delete the specified map from an event
 <br>Response: updated event object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X DELETE http://localhost:3090/events/5d7bc03180fba060b7306359/maps/5d7b56f3da12cb4cae3ecb00/course
 ```
-```json
+```
 {
   "_id":"5d7bc03180fba060b7306359",
   "organisedBy":[],
@@ -1113,10 +1111,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Delete the specified comment from an event
 <br>Response: updated comments object (JSON) *[not complete event]*
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X DELETE http://localhost:3090/events/5d7bc03180fba060b7306359/comments/5d7b56f3da12cb4cae3ecb00/5d7bf5a60f55ee69d7338393
 ```
-```json
+```
 []
 ```
 
@@ -1127,10 +1125,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve a list of links between events, matching specified criteria if provided
 <br>Response: array of event link objects (JSON)
 
-```bash
+```
 curl http://localhost:3090/events/links
 ```
-```json
+```
 [
   {
   "_id":"5d7cb3b34af54c04d25c2a19",
@@ -1152,10 +1150,10 @@ curl http://localhost:3090/events/links
 <br>Create a new link between the specified events
 <br>Response: created event link object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d '{"displayName":"Example events","includes":["5d7bc03180fba060b7306359"]}' -H 'Content-Type: application/json' http://localhost:3090/events/links
 ```
-```json
+```
 {
   "includes":[{
     "_id":"5d7bc03180fba060b7306359",
@@ -1173,10 +1171,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Update the specified link between events
 <br>Response: updated event link object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -d 'displayName="Example events updated"' -X PATCH http://localhost:3090/events/links/5d7cb3b34af54c04d25c2a19
 ```
-```json
+```
 {
   "_id":"5d7cb3b34af54c04d25c2a19",
   "includes":[{
@@ -1194,10 +1192,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Delete the specified link between events (admin users only)
 <br>Response: deleted event link object (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X DELETE http://localhost:3090/events/links/5d7cb3b34af54c04d25c2a19
 ```
-```json
+```
 {
   "_id":"5d7cb3b34af54c04d25c2a19",
   "includes":[{
@@ -1218,10 +1216,10 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 <br>Retrieve a list of recent activity of given length if specified, matching specified criteria if provided
 <br>Response: array of activity objects (JSON)
 
-```bash
+```
 curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' http://localhost:3090/activity?number=5
 ```
-```json
+```
 [{
   "_id":"5d7bed6180fba060b7306385",
   "actionType":"EVENT_MAP_UPLOADED",
@@ -1347,7 +1345,7 @@ Not yet formally released (1.0.0 expected late September 2019).
 
 ## Installation
 
-```bash
+```
 git clone https//github.com/markcollis/mapoholic-server.git
 cd mapoholic-server
 yarn install
@@ -1365,7 +1363,7 @@ For the MongoDB database, you can either [install it locally](https://docs.mongo
 
 ## Usage
 
-```bash
+```
 yarn start
 ```
 will run the MapOholic API.
