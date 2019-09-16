@@ -8,6 +8,7 @@ const { dbRecordActivity } = require('../services/activityServices');
 const { getQRData, calculateDistance } = require('../services/parseQR');
 const { createRouteOverlay } = require('../services/createRouteOverlay');
 const { createThumbnailAndExtract } = require('../services/createThumbnailAndExtract');
+const { prefixEventImagePaths } = require('../services/prefixImagePaths');
 const { dbGetEventById, dbUpdateEvent } = require('../services/eventServices');
 
 // confirm that the user has permission to upload a map (do not process image if rejected)
@@ -242,8 +243,9 @@ const postMap = (req, res) => {
                       }
                       return canSee;
                     });
-                    const eventToSend = { ...updatedEvent, runners: selectedRunners };
-                    return res.status(200).send(eventToSend);
+                    const eventRunnersFiltered = { ...updatedEvent, runners: selectedRunners };
+                    const eventToReturn = prefixEventImagePaths(eventRunnersFiltered);
+                    return res.status(200).send(eventToReturn);
                   }).catch((updateEventErr) => {
                     logger('error')('Error recording updated map references:', updateEventErr.message);
                     return res.status(400).send({ error: updateEventErr.message });
@@ -407,8 +409,9 @@ const deleteMap = (req, res) => {
           }
           return canSee;
         });
-        const eventToSend = { ...updatedEvent, runners: selectedRunners };
-        return res.status(200).send(eventToSend);
+        const eventRunnersFiltered = { ...updatedEvent, runners: selectedRunners };
+        const eventToReturn = prefixEventImagePaths(eventRunnersFiltered);
+        return res.status(200).send(eventToReturn);
       });
     })
     .catch((updateEventErr) => {

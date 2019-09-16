@@ -4,6 +4,10 @@ const logger = require('../services/logger');
 const logReq = require('./logReq');
 const { dbRecordActivity } = require('../services/activityServices');
 const {
+  prefixImagePath,
+  prefixEventImagePaths,
+} = require('../services/prefixImagePaths');
+const {
   validateClubIds,
   validateEventLinkIds,
   validateUserId,
@@ -99,7 +103,8 @@ const createEvent = (req, res) => {
           actionBy: req.user._id,
           event: savedEvent._id,
         });
-        return res.status(200).send(savedEvent);
+        const eventToReturn = prefixEventImagePaths(savedEvent);
+        return res.status(200).send(eventToReturn);
       });
     }).catch((err) => {
       logger('error')('Error creating event:', err.message);
@@ -379,7 +384,7 @@ const getEventList = (req, res) => {
               displayName: runner.user.displayName,
               courseTitle: runner.user.courseTitle,
               numberMaps: runner.maps.length,
-              mapExtract: extractName,
+              mapExtract: prefixImagePath(extractName),
               tags: runner.tags,
             };
           }
@@ -441,7 +446,8 @@ const getEvent = (req, res) => {
       filteredEvent.runners = selectedRunners.filter(runner => runner);
     }
     logger('success')(`Returned event details for ${foundEvent.name} (${foundEvent.date}).`);
-    return res.status(200).send(filteredEvent);
+    const eventToReturn = prefixEventImagePaths(filteredEvent);
+    return res.status(200).send(eventToReturn);
   }).catch((err) => {
     logger('error')('Error getting event details:', err.message);
     return res.status(400).send({ error: err.message });
@@ -459,6 +465,7 @@ const updateEvent = (req, res) => {
     logger('error')('Error: Guest accounts are not allowed to edit events.');
     return res.status(401).send({ error: 'Guest accounts are not allowed to edit events.' });
   }
+  const requestorClubs = req.user.memberOf.map(club => club._id.toString());
   if (!ObjectID.isValid(eventid)) {
     logger('error')('Error updating event: invalid ObjectID.');
     return res.status(400).send({ error: 'Invalid ID.' });
@@ -557,8 +564,30 @@ const updateEvent = (req, res) => {
                   actionBy: req.user._id,
                   event: eventid,
                 });
-                // console.log('updatedEvent', updatedEvent);
-                return res.status(200).send(updatedEvent);
+                const filteredEvent = updatedEvent;
+                if (updatedEvent.runners.length > 0) {
+                  const selectedRunners = updatedEvent.runners.map((runner) => {
+                    let canSee = false;
+                    if (requestorRole === 'admin' && runner.user.active) canSee = true;
+                    if (runner.visibility === 'public') canSee = true;
+                    if ((requestorRole === 'standard') || (requestorRole === 'guest')) {
+                      if (runner.visibility === 'all') canSee = true;
+                      if (requestorId === runner.user._id.toString()) canSee = true;
+                      if (runner.visibility === 'club') {
+                        const commonClubs = runner.user.memberOf.filter((clubId) => {
+                          return requestorClubs.includes(clubId.toString());
+                        });
+                        if (commonClubs.length > 0) canSee = true;
+                      }
+                    }
+                    if (canSee) return runner;
+                    return false;
+                  });
+                  filteredEvent.runners = selectedRunners.filter(runner => runner);
+                }
+                logger('success')(`Returned event details for ${updatedEvent.name} (${updatedEvent.date}).`);
+                const eventToReturn = prefixEventImagePaths(filteredEvent);
+                return res.status(200).send(eventToReturn);
               }).catch((err) => {
                 logger('error')('Error updating event:', err.message);
                 return res.status(400).send({ error: err.message });

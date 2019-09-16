@@ -3,6 +3,7 @@ const { ObjectID } = require('mongodb');
 const logger = require('../services/logger');
 const logReq = require('./logReq');
 const { dbRecordActivity } = require('../services/activityServices');
+const { prefixEventImagePaths } = require('../services/prefixImagePaths');
 const {
   getOrisEventData,
   getOrisEventEntryData,
@@ -114,7 +115,8 @@ const addEventRunner = (req, res) => {
           event: eventid,
           eventRunner: req.user._id,
         });
-        return res.status(200).send(filteredEvent);
+        const eventToReturn = prefixEventImagePaths(filteredEvent);
+        return res.status(200).send(eventToReturn);
       })
       .catch((err) => {
         logger('error')('Error adding runner to event:', err.message);
@@ -295,7 +297,8 @@ const updateEventRunner = (req, res) => {
           event: eventid,
           eventRunner: userid,
         });
-        return res.status(200).send(updatedEvent);
+        const eventToReturn = prefixEventImagePaths(updatedEvent);
+        return res.status(200).send(eventToReturn);
       }).catch((err) => {
         logger('error')('Error updating runner at event:', err.message);
         return res.status(400).send({ error: err.message });
@@ -356,7 +359,8 @@ const deleteEventRunner = (req, res) => {
         event: eventid,
         eventRunner: userid,
       });
-      return res.status(200).send(updatedEvent);
+      const eventToReturn = prefixEventImagePaths(updatedEvent);
+      return res.status(200).send(eventToReturn);
     });
   }).catch((err) => {
     logger('error')('Error deleting runner:', err.message);

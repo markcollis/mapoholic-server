@@ -8,6 +8,7 @@ const logReq = require('./logReq');
 const { dbRecordActivity } = require('../services/activityServices');
 const { validateClubIds } = require('../services/validateIds');
 const { getOrisUserId } = require('../services/orisAPI');
+const { prefixImagePath } = require('../services/prefixImagePaths');
 const {
   dbDeleteUser,
   dbGetUserById,
@@ -55,7 +56,10 @@ const getUserList = (req, res) => {
   }
   dbGetUsers(userSearchCriteria).then((userList) => {
     logger('success')(`Returned list of ${userList.length} user(s).`);
-    return res.status(200).send(userList);
+    const userListToReturn = userList.map((user) => {
+      return { ...user, profileImage: prefixImagePath(user.profileImage) };
+    });
+    return res.status(200).send(userListToReturn);
   }, (err) => {
     logger('error')('Error getting list of users:', err.message);
     return res.status(400).send(err.message);
@@ -90,7 +94,8 @@ const findAndReturnUserDetails = requestingUser => (userId) => {
         if (commonClubs.length > 0) allowedToSee = true;
       }
       if (allowedToSee) {
-        return profile;
+        const profileToReturn = { ...profile, profileImage: prefixImagePath(profile.profileImage) };
+        return profileToReturn;
       }
       return { authError: true };
     });
@@ -204,7 +209,11 @@ const updateUser = (req, res) => {
             actionBy: req.user._id,
             user: id,
           });
-          return res.status(200).send(updatedUser);
+          const userToReturn = {
+            ...updatedUser,
+            profileImage: prefixImagePath(updatedUser.profileImage),
+          };
+          return res.status(200).send(userToReturn);
         }).catch((err) => {
           if (err.message.slice(0, 6) === 'E11000') {
             const duplicate = err.message.split('"')[1];
@@ -285,7 +294,7 @@ const postProfileImage = (req, res) => {
               actionBy: req.user._id,
               user: req.params.id,
             });
-            return res.status(200).send(updatedUser.profileImage);
+            return res.status(200).send(prefixImagePath(updatedUser.profileImage));
           }).catch((saveUrlErr) => {
             logger('error')('Error recording new profile image URL:', saveUrlErr.message);
             return res.status(400).send({ error: saveUrlErr.message });
