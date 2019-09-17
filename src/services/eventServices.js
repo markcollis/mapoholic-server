@@ -8,6 +8,28 @@ const EventLink = require('../models/eventLink');
 const dbCreateEvent = (fieldsToCreate) => {
   const newEvent = new Event(fieldsToCreate);
   return newEvent.save().then((savedEvent) => {
+    // add event reference to eventLinks if there are any
+    if (fieldsToCreate.linkedTo) {
+      const eventLinksToUpdate = fieldsToCreate.linkedTo.map(el => el.toString());
+      return EventLink.updateMany({ _id: { $in: (eventLinksToUpdate) } },
+        { $addToSet: { includes: savedEvent._id } })
+        .then(() => {
+          return savedEvent
+            .populate('owner', '_id displayName')
+            .populate('organisedBy', '_id shortName')
+            .populate('linkedTo', '_id displayName')
+            .populate({
+              path: 'runners.user',
+              select: '_id displayName fullName regNumber orisId profileImage visibility',
+              populate: { path: 'memberOf', select: '_id shortName' },
+            })
+            .populate({
+              path: 'runners.comments.author',
+              select: '_id displayName fullName regNumber',
+            })
+            .execPopulate();
+        });
+    }
     return savedEvent
       .populate('owner', '_id displayName')
       .populate('organisedBy', '_id shortName')
@@ -21,19 +43,7 @@ const dbCreateEvent = (fieldsToCreate) => {
         path: 'runners.comments.author',
         select: '_id displayName fullName regNumber',
       })
-      .execPopulate()
-      .then((createdEvent) => {
-        // add event reference to eventLinks if there are any
-        if (fieldsToCreate.linkedTo) {
-          const eventLinksToUpdate = fieldsToCreate.linkedTo.map(el => el.toString());
-          EventLink.updateMany({ _id: { $in: (eventLinksToUpdate) } },
-            { $addToSet: { includes: createdEvent._id } })
-            .then(() => {
-              return createdEvent;
-            });
-        }
-        return createdEvent;
-      });
+      .execPopulate();
   }).catch((err) => {
     if (err.message.slice(0, 6) === 'E11000') {
       const duplicate = err.message.split('"')[1];

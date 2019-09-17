@@ -8,12 +8,9 @@ const prefixImagePath = (imagePath) => {
   return `${prefix}/${imagePath}`;
 };
 
-// prefix profile image path in a user record prior to responding
-
-
 // prefix all image paths in an event record prior to responding
 const prefixEventImagePaths = (eventRecord) => {
-  return {
+  const prefixedEventRecord = {
     ...eventRecord,
     runners: eventRecord.runners.map((runner) => {
       return {
@@ -44,6 +41,7 @@ const prefixEventImagePaths = (eventRecord) => {
       };
     }),
   };
+  return prefixedEventRecord;
 };
 
 module.exports = {

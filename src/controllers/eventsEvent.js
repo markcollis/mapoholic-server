@@ -103,7 +103,7 @@ const createEvent = (req, res) => {
           actionBy: req.user._id,
           event: savedEvent._id,
         });
-        const eventToReturn = prefixEventImagePaths(savedEvent);
+        const eventToReturn = prefixEventImagePaths({ ...savedEvent.toObject() });
         return res.status(200).send(eventToReturn);
       });
     }).catch((err) => {
