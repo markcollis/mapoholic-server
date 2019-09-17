@@ -101,6 +101,7 @@ const oeventSchema = new mongoose.Schema({
       loss: { type: String, trim: true }, // ORIS Loss
       // compare against the set of userIds with associated maps whenever edited?
     }],
+    splitTimes: { type: Object }, // placeholder for future use, detailed structure TBD
     // performance fields all optional, enables detailed info to be captured if the user wants to
     // can be obtained if ORIS hosts results via getEventResults&eventid&classid
     // fields are defined to be compatible with ORIS, hence strings rather than numbers

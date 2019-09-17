@@ -34,7 +34,6 @@ const addEventRunner = (req, res) => {
   }
   // now need to check database to identify existing runners
   return dbGetEventById(eventid).then((eventToAddRunnerTo) => {
-  // return Event.findById(eventid).then((eventToAddRunnerTo) => {
     if (!eventToAddRunnerTo) {
       logger('error')('Error adding runner to event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
@@ -42,7 +41,6 @@ const addEventRunner = (req, res) => {
     const runnerIds = (eventToAddRunnerTo.runners.length === 0)
       ? []
       : eventToAddRunnerTo.runners.map(runner => runner.user._id.toString());
-    // console.log('runnerIds:', runnerIds);
     if (runnerIds.includes(requestorId)) {
       logger('error')('Error adding runner to event: runner already present.');
       return res.status(400).send({ error: 'Runner already present in event. Use PATCH to update.' });
@@ -57,6 +55,7 @@ const addEventRunner = (req, res) => {
       'courseControls', // ORIS Controls
       'fullResults', // [] allowed to submit manually, front end might not support initially though
       // following can be obtained if ORIS hosts results via getEventResults&eventid&classid
+      'splitTimes', // placeholder for future use
       'time', // hhh:mm Data.Result_nnnnn.Time [UserID=orisId]
       'place', // Data.Result_nnnn.Place
       'timeBehind', // Data.Result_nnnn.Loss
@@ -69,23 +68,7 @@ const addEventRunner = (req, res) => {
         fieldsToCreateRunner[key] = req.body[key];
       }
     });
-    // console.log('fieldsToCreateRunner:', fieldsToCreateRunner);
     return dbAddRunner(eventid, fieldsToCreateRunner)
-    // return Event.findByIdAndUpdate(eventid, { $addToSet: { runners: fieldsToCreateRunner } },
-    //   { new: true })
-    //   .populate('owner', '_id displayName')
-    //   .populate('organisedBy', '_id shortName')
-    //   .populate('linkedTo', '_id displayName')
-    //   .populate({
-    //     path: 'runners.user',
-    //     select: '_id displayName fullName regNumber orisId profileImage visibility',
-    //     populate: { path: 'memberOf', select: '_id shortName' },
-    //   })
-    //   .populate({
-    //     path: 'runners.comments.author',
-    //     select: '_id displayName fullName regNumber',
-    //   })
-    //   .select('-active -__v')
       .then((updatedEvent) => {
         const filteredEvent = updatedEvent;
         if (updatedEvent.runners.length > 0) {
@@ -150,7 +133,6 @@ const orisAddEventRunner = (req, res) => {
   }
   // now need to check database to identify event and runners
   return dbGetEventById(eventid).then((eventToAddRunnerTo) => {
-  // return Event.findById(eventid).then((eventToAddRunnerTo) => {
     if (!eventToAddRunnerTo) {
       logger('error')('Error updating event: no matching event found.');
       return res.status(404).send({ error: 'Event could not be found.' });
@@ -271,6 +253,7 @@ const updateEventRunner = (req, res) => {
         'courseClimb', // ORIS Climbing (m)
         'courseControls', // ORIS Controls
         'fullResults', // [] will replace entire set of results recorded
+        'splitTimes', // placeholder for future use, will replace entire object
         'time', // hhh:mm Data.Result_nnnnn.Time [UserID=orisId]
         'place', // Data.Result_nnnn.Place
         'timeBehind', // Data.Result_nnnn.Loss
