@@ -38,7 +38,9 @@ The API provides the following endpoints. Authentication is token-based, request
 
 ### Users
 
-*Public:*<br>
+#### Public:
+<hr>
+
 **POST** /users { email, password, displayName? }
 <br>Create a user account
 <br>Response: auth token (JWT)
@@ -51,6 +53,7 @@ curl -d 'email=example@example.com&password=password' http://localhost:3090/user
   "token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg"
 }
 ```
+<hr>
 
 **POST** /users/login { email, password }
 <br>Log in to an existing user account
@@ -64,6 +67,7 @@ curl -d 'email=example@example.com&password=newPassword' http://localhost:3090/u
   "token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1Njg0NTQ3OTQ3Njh9.wtUbVHuQ6AN94eY94s0C0nmc8aShLxvuIVx5BvtrJus"
 }
 ```
+<hr>
 
 **GET** /users/public[?displayName=, fullName=, regNumber=, location=, about=, memberOf=, role=]
 <br>Retrieve a list of all users, matching specified criteria if provided
@@ -93,6 +97,7 @@ curl http://localhost:3090/users/public
   {...}
 ]
 ```
+<hr>
 
 **GET** /users/public/:id
 <br>Retrieve full details for the specified user
@@ -119,8 +124,11 @@ curl http://localhost:3090/users/public/5d7b56f3da12cb4cae3ecb00
   "updatedAt":"2019-09-13T08:44:35.929Z"
 }
 ```
+<hr>
 
-*Requiring authentication:*<br>
+#### Requiring authentication:
+<hr>
+
 **POST** /users/:id/password { currentPassword, newPassword }
 <br>Reset password of specified user
 <br>Response: success message
@@ -133,6 +141,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "status":"Password changed successfully."
 }
 ```
+<hr>
 
 **POST** /users/:id/profileImage {{+upload: image file}}
 <br>Upload profile image for specified user
@@ -144,6 +153,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 ```plain
 http://localhost:3090/images/avatars/5d7b56f3da12cb4cae3ecb00.jpg
 ```
+<hr>
 
 **GET** /users[?displayName=, fullName=, regNumber=, location=, about=, memberOf=, role=]
 <br>Retrieve a list of all users, matching specified criteria if provided
@@ -173,6 +183,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   {...}
 ]
 ```
+<hr>
 
 **GET** /users/me
 <br>Retrieve full details for the currently logged in user
@@ -199,6 +210,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T08:44:35.929Z"
 }
 ```
+<hr>
 
 **GET** /users/:id
 <br>Retrieve full details for the specified user
@@ -225,6 +237,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T08:44:35.929Z"
 }
 ```
+<hr>
 
 **PATCH** /users/:id { displayName?, fullName?, regNumber?, location?, about?, contact?, memberOf?, email?, visibility? }
 <br>Update the specified user
@@ -251,6 +264,7 @@ curl -X PATCH -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ
   "updatedAt":"2019-09-13T08:44:35.929Z"
 }
 ```
+<hr>
 
 **DELETE** /users/:id
 <br>Delete the specified user
@@ -278,6 +292,7 @@ curl -X DELETE -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.ey
   "updatedAt":"2019-09-14T09:54:25.449Z"
 }
 ```
+<hr>
 
 **DELETE** /users/:id/profileImage
 <br>Delete profile image of the specified user
@@ -291,10 +306,13 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "status":"Profile image deleted from example@example.com by example@example.com."
 }
 ```
+<hr>
 
 ### Clubs
 
-*Public:*<br>
+#### Public:
+<hr>
+
 **GET** /clubs[?shortName=, fullName=, orisId=, country=, website=, owner=]
 <br>Retrieve a list of all clubs, matching specified criteria if provided
 <br>Response: array of club objects (JSON)
@@ -322,8 +340,10 @@ curl http://localhost:3090/clubs
   {...}
 ]
 ```
+<hr>
 
-*Requiring authentication:*<br>
+#### Requiring authentication:
+<hr>
 
 **POST** /clubs { shortName, fullName?, country?, website? }
 <br>Create a club (attempting to automatically populate missing details for Czech clubs from their abbreviation via ORIS)
@@ -349,6 +369,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T09:53:32.046Z",
 }
 ```
+<hr>
 
 **PATCH** /clubs/:id { shortName?, fullName?, country?, website? }
 <br>Update the specified club (attempting to automatically populate missing details for Czech clubs via ORIS)
@@ -373,6 +394,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T09:53:32.046Z",
 }
 ```
+<hr>
 
 **DELETE** /clubs/:id
 <br>Delete the specified club
@@ -398,10 +420,12 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T12:26:30.511Z",
 },
 ```
+<hr>
 
 ### Events
 
-*Public:*<br>
+#### Public:
+<hr>
 
 **GET** /events/public
 
@@ -435,6 +459,7 @@ curl http://localhost:3090/events/public
   {...}
 ]
 ```
+<hr>
 
 **GET** /events/:eventid/public
 
@@ -480,8 +505,10 @@ curl http://localhost:3090/events/5d7bc03180fba060b7306359/public
   "updatedAt":"2019-09-13T16:27:27.330Z"
 }
 ```
+<hr>
 
-*Requiring authentication:*<br>
+#### Requiring authentication:
+<hr>
 
 **POST** /events { name, date, mapName?, locPlace?, locRegions?, locCountry?, locLat?, locLong?, locCornerNW?, locCornerNE?, locCornerSW?, locCornerSE?, orisId?, types?, tags?, website?, results?, organisedBy?, linkedTo? }
 <br>Create an event
@@ -515,6 +542,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T16:13:37.860Z",
 }
 ```
+<hr>
 
 **POST** /events/oris/:oriseventid
 <br>Create a new event using ORIS API data for *ORIS event id*
@@ -558,6 +586,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T16:24:25.545Z",
 }
 ```
+<hr>
 
 **POST** /events/:eventid/maps
 <br>Add the current user as a runner to the specified event
@@ -607,6 +636,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T16:27:27.330Z"
 }
 ```
+<hr>
 
 **POST** /events/:eventid/oris
 <br>Add the current user as a runner to the specified event, populating course details and results by calling the ORIS API
@@ -701,6 +731,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T16:31:25.214Z"
 }
 ```
+<hr>
 
 **POST** /events/:eventid/maps/:userid/:maptype(course|route)/:maptitle? {{ +upload: image file }}
 <br>Upload a scanned map for the specified runner to the specified event; either course or route must be specified as the type of map, while the optional maptitle is the label to use for each part of multi-part map sets
@@ -764,6 +795,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 "mapName":"\"The Enchanted Forest\""
 }
 ```
+<hr>
 
 **POST** /events/:eventid/comments/:userid { text }
 <br>Post a new comment against the specified runner's map in the specified event
@@ -787,6 +819,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T20:01:42.995Z"
 }]
 ```
+<hr>
 
 **GET** /events[?date=, name=, orisId=, mapName=, locName=, locPlace=, locRegions=, locCountry=, types=, tags=, website=, results=, owner=, organisedBy=, linkedTo=, runners=, locLat=, locLong=]
 <br>Retrieve a list of all events, matching specified criteria if provided [may include events without *maps* visible to the current user]
@@ -822,6 +855,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   {...}
 ]
 ```
+<hr>
 
 **GET** /events/:eventid
 <br>Retrieve full details for the specified event
@@ -869,6 +903,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T16:27:27.330Z"
 }
 ```
+<hr>
 
 **GET** /events/oris[?datefrom=, dateto]
 <br>Retrieve a list of all events in ORIS that the current user has entered (to be used to provide a list to select from before calling POST /events/oris/:oriseventid)
@@ -884,6 +919,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   {"orisEntryId":"1448518","orisClassId":"113104","orisEventId":"4739","date":"2019-09-08","class":"H40B","name":"Žebříček B-Čechy západ","place":"Kamenice, osada Těptín"},
   {"orisEntryId":"1472676","orisClassId":"113632","orisEventId":"5406","date":"2019-09-26","class":"T3","name":"Podvečerní O-běh Folimankou","place":"Sportovní hala USK Folimanka, Praha 2"}]
 ```
+<hr>
 
 **PATCH** /events/:eventid { name?, date?, mapName?, locPlace?, locRegions?, locCountry?, locLat?, locLong?, locCornerNW?, locCornerNE?, locCornerSW?, locCornerSE?, types?, tags?, website?, results?, organisedBy?, linkedTo? }
 <br>Update the specified event
@@ -935,6 +971,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "mapName":"\"The Enchanted Forest\""
 }
 ```
+<hr>
 
 **PATCH** /events/:eventid/maps/:userid { visibility?, courseTitle?, courseLength?, courseClimb?, courseControls?, fullResults?, time?, place?, timeBehind?, fieldSize?, distanceRun?, tags? }
 <br>Update the specified runner and map data
@@ -987,6 +1024,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 "mapName":"\"The Enchanted Forest\""
 }
 ```
+<hr>
 
 **PATCH** /events/:eventid/comments/:userid/:commentid { text}
 <br>Edit the specified comment
@@ -1010,17 +1048,42 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-13T20:04:20.721Z"
 }]
 ```
+<hr>
 
 **DELETE** /events/:eventid
 <br>Delete the specified event
 <br>Response: deleted event object (JSON)
 
 ```
+curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZDdiNTZmM2RhMTJjYjRjYWUzZWNiMDAiLCJpYXQiOjE1NjgzNjQyNzYyMzB9.3vwb0VPbnfBlo67PsOHhdqssRXxvbGZKqchEtImNDMg' -X DELETE http://localhost:3090/events/5d7bc03180fba060b7306359
 
 ```
 ```
-
+{
+  "_id":"5d7bc03180fba060b7306359",
+  "organisedBy":[],
+  "linkedTo":[],
+  "locRegions":[],
+  "locCornerSW":[],
+  "locCornerNW":[],
+  "locCornerNE":[],
+  "locCornerSE":[],
+  "types":[],
+  "tags":[],
+  "owner":{
+    "_id":"5d7b56f3da12cb4cae3ecb00",
+    "displayName":"example@example.com"
+  },
+  "name":"\"Example Trophy 2019\"",
+  "date":"2019-09-14",
+  "locPlace":"Utopia",
+  "runners":[],
+  "createdAt":"2019-09-13T16:13:37.860Z",
+  "updatedAt":"2019-09-14T09:12:58.453Z",
+  "mapName":"\"The Enchanted Forest\""
+}
 ```
+<hr>
 
 **DELETE** /events/:eventid/maps/:userid
 <br>Delete the specified runner and associated maps from an event
@@ -1049,11 +1112,12 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "date":"2019-09-14",
   "locPlace":"Utopia",
   "runners":[],
-"createdAt":"2019-09-13T16:13:37.860Z",
-"updatedAt":"2019-09-14T09:12:52.286Z",
-"mapName":"\"The Enchanted Forest\""
+  "createdAt":"2019-09-13T16:13:37.860Z",
+  "updatedAt":"2019-09-14T09:12:52.286Z",
+  "mapName":"\"The Enchanted Forest\""
 }
 ```
+<hr>
 
 **DELETE** /events/:eventid/maps/:userid/:maptype(course|route)/:maptitle?
 <br>Delete the specified map from an event
@@ -1106,6 +1170,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 "mapName":"\"The Enchanted Forest\""
 }
 ```
+<hr>
 
 **DELETE** /events/:eventid/comments/:userid/:commentid
 <br>Delete the specified comment from an event
@@ -1117,10 +1182,13 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
 ```
 []
 ```
+<hr>
 
 ### Event Links
 
-*Public:*<br>
+#### Public:
+<hr>
+
 **GET** /events/links[?displayName=, includes=]
 <br>Retrieve a list of links between events, matching specified criteria if provided
 <br>Response: array of event link objects (JSON)
@@ -1144,8 +1212,12 @@ curl http://localhost:3090/events/links
   {...}
 ]
 ```
+<hr>
 
-*Requiring authentication:*<br>
+
+#### Requiring authentication:
+<hr>
+
 **POST** /events/links { displayName, includes }
 <br>Create a new link between the specified events
 <br>Response: created event link object (JSON)
@@ -1166,6 +1238,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-14T09:32:35.095Z"
 }
 ```
+<hr>
 
 **PATCH** /events/links/:eventlinkid { displayName?, includes? }
 <br>Update the specified link between events
@@ -1187,6 +1260,8 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-14T09:39:12.200Z"
 }
 ```
+<hr>
+
 
 **DELETE** /events/links/:eventlinkid
 <br>Delete the specified link between events (admin users only)
@@ -1208,10 +1283,13 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "updatedAt":"2019-09-14T09:39:12.200Z"
 }
 ```
+<hr>
 
 ### Activity
 
-*Requiring authentication:*<br>
+#### Requiring authentication:
+<hr>
+
 **GET** /activity[?number=, actionType=, actionBy=, club=, comment=, event=, eventRunner=, eventLink=, user=]
 <br>Retrieve a list of recent activity of given length if specified, matching specified criteria if provided
 <br>Response: array of activity objects (JSON)
@@ -1334,6 +1412,7 @@ curl -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1
   "timestamp":"2019-09-13T16:30:00.246Z",
 }]
 ```
+<hr>
 
 ## Release History
 
