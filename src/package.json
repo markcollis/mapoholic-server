@@ -10,7 +10,7 @@
     "start-watch": "export NODE_ENV=\"development\" && nodemon index.js",
     "win-start-watch": "set NODE_ENV=\"development\" && nodemon index.js",
     "local-watch": "export NODE_ENV=\"local\" && nodemon index.js",
-    "test": "export NODE_ENV=\"test\" NODE_TLS_REJECT_UNAUTHORIZED=\"0\" && mocha ./**/*.test.js",
+    "test": "export NODE_ENV=\"test\" && mocha ./**/*.test.js",
     "test-watch": "nodemon --exec 'yarn test'",
     "mongo": "sudo service mongod start"
   },

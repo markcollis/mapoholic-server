@@ -33,9 +33,7 @@ describe('POST /users', () => {
       })
       .end((err) => {
         if (err) return done(err);
-        // console.log('about to search for newUser');
         return User.find({ email: newUser.email }).then((users) => {
-          // console.log(users);
           expect(users.length).toBe(1);
           expect(users[0].email).toBe('new@user.com');
           done();
@@ -154,7 +152,6 @@ describe('POST /users/:id/password', () => {
       .send(updateToSend)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body', res.body);
         expect(res.body.status).toBe('Password changed successfully.');
       })
       .then(() => { // now confirm that the password was changed
@@ -179,7 +176,6 @@ describe('POST /users/:id/password', () => {
       .send(updateToSend)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body', res.body);
         expect(res.body.status).toBe('Password changed successfully.');
       })
       .then(() => { // now confirm that the password was changed
@@ -204,8 +200,6 @@ describe('POST /users/:id/password', () => {
       .send(updateToSend)
       .expect(400)
       .expect((res) => {
-        // console.log('res.body', res.body);
-        // console.log('res.error', res.error);
         expect(res.body.error).toBe('Your password must be at least 8 characters long.');
       })
       .then(() => { // now confirm that the password wasn't actually changed!
@@ -230,8 +224,6 @@ describe('POST /users/:id/password', () => {
       .send(updateToSend)
       .expect(400)
       .expect((res) => {
-        // console.log('res.body', res.body);
-        // console.log('res.error', res.error);
         expect(res.body.error).toBe('You are not allowed to change this user\'s password.');
       })
       .then(() => { // now confirm that the password wasn't actually changed!
@@ -256,8 +248,6 @@ describe('POST /users/:id/password', () => {
       .send(updateToSend)
       .expect(400)
       .expect((res) => {
-        // console.log('res.body', res.body);
-        // console.log('res.error', res.error);
         expect(res.body.error).toBe('Guest accounts are not allowed to change passwords.');
       })
       .then(() => { // now confirm that the password wasn't actually changed!
@@ -281,7 +271,6 @@ describe('POST /users/:id/password', () => {
       .send(updateToSend)
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.error.text).toBe('Unauthorized');
       })
       .then(() => { // now confirm that the password wasn't actually changed!
@@ -305,7 +294,6 @@ describe('GET /users', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.length).toBe(initUsers.length);
       })
       .end(done);
@@ -316,9 +304,8 @@ describe('GET /users', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.length).toBe(1);
-        expect(res.body[0].user_id).toBe(initUsers[0]._id.toString());
+        expect(res.body[0]._id).toBe(initUsers[0]._id.toString());
       })
       .end(() => {
         request(server)
@@ -326,10 +313,9 @@ describe('GET /users', () => {
           .set('Authorization', `bearer ${initUserTokens[0]}`)
           .expect(200)
           .expect((res) => {
-            // console.log('res.body:', res.body);
             expect(res.body.length).toBe(2);
-            expect(res.body[0].user_id).toBe(initUsers[0]._id.toString());
-            expect(res.body[1].user_id).toBe(initUsers[3]._id.toString());
+            expect(res.body[0]._id).toBe(initUsers[0]._id.toString());
+            expect(res.body[1]._id).toBe(initUsers[3]._id.toString());
           })
           .end(done);
       });
@@ -340,7 +326,6 @@ describe('GET /users', () => {
       .set('Authorization', `bearer ${initUserTokens[3]}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.length).toBe(3);
       })
       .end(done);
@@ -351,7 +336,6 @@ describe('GET /users', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.length).toBe(0);
       })
       .end(done);
@@ -361,7 +345,6 @@ describe('GET /users', () => {
       .get('/users')
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.error.text).toBe('Unauthorized');
       })
       .end(done);
@@ -372,7 +355,6 @@ describe('GET /users', () => {
       .set('Authorization', 'bearer token1234')
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.error.text).toBe('Unauthorized');
       })
       .end(done);
@@ -386,9 +368,8 @@ describe('GET /users/public', () => {
       .get('/users/public')
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.length).toBe(1);
-        expect(res.body[0].user_id).toBe(initUsers[2]._id.toString());
+        expect(res.body[0]._id).toBe(initUsers[2]._id.toString());
       })
       .end(done);
   });
@@ -397,9 +378,8 @@ describe('GET /users/public', () => {
       .get('/users/public?DisplayName=Guest')
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.length).toBe(1);
-        expect(res.body[0].user_id).toBe(initUsers[2]._id.toString());
+        expect(res.body[0]._id).toBe(initUsers[2]._id.toString());
       })
       .end(done);
   });
@@ -408,7 +388,6 @@ describe('GET /users/public', () => {
       .get('/users/public?fullName=NotRegisteredYet')
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.length).toBe(0);
       })
       .end(done);
@@ -433,7 +412,6 @@ describe('GET /users/me', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body._id).toBe(initUsers[0]._id.toString());
       })
       .end(done);
@@ -443,7 +421,6 @@ describe('GET /users/me', () => {
       .get('/users/me')
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.error.text).toBe('Unauthorized');
       })
       .end(done);
@@ -454,7 +431,6 @@ describe('GET /users/me', () => {
       .set('Authorization', 'bearer token1234')
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.error.text).toBe('Unauthorized');
       })
       .end(done);
@@ -469,7 +445,6 @@ describe('GET /users/:id', () => {
       .set('Authorization', `bearer ${initUserTokens[3]}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body._id).toBe(initUsers[0]._id.toString());
       })
       .end(done);
@@ -480,7 +455,6 @@ describe('GET /users/:id', () => {
       .set('Authorization', `bearer ${initUserTokens[3]}`)
       .expect(401)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.error).toBe('Not authorised to view user details.');
       })
       .end(done);
@@ -491,7 +465,6 @@ describe('GET /users/:id', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(404)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.error).toBe('User details could not be found.');
       })
       .end(done);
@@ -503,7 +476,6 @@ describe('GET /users/:id', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(404)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.error).toBe('User details could not be found.');
       })
       .end(done);
@@ -513,7 +485,6 @@ describe('GET /users/:id', () => {
       .get('/users/me')
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.error.text).toBe('Unauthorized');
       })
       .end(done);
@@ -524,7 +495,6 @@ describe('GET /users/:id', () => {
       .set('Authorization', 'bearer token1234')
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.error.text).toBe('Unauthorized');
       })
       .end(done);
@@ -538,7 +508,6 @@ describe('GET /users/public/:id', () => {
       .get(`/users/public/${initUsers[2]._id.toString()}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body._id).toBe(initUsers[2]._id.toString());
       })
       .end(done);
@@ -548,7 +517,6 @@ describe('GET /users/public/:id', () => {
       .get(`/users/public/${initUsers[0]._id.toString()}`)
       .expect(401)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.error).toBe('Not authorised to view user details.');
       })
       .end(done);
@@ -559,7 +527,6 @@ describe('GET /users/public/:id', () => {
       .set('Authorization', 'bearer token1234')
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body._id).toBe(initUsers[2]._id.toString());
       })
       .end(done);
@@ -579,13 +546,12 @@ describe('PATCH /users/:id', () => {
       .send(updateToSend)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.location).toBe(updateToSend.location);
         expect(res.body.role).toBe(updateToSend.role);
       })
       .end(done);
   });
-  it('should fail to update if it would violiate unique criteria', (done) => {
+  it('should fail to update if it would violate unique criteria', (done) => {
     const updateToSend = {
       email: initUsers[1].email,
       // displayName: initUsers[2].displayName,
@@ -596,7 +562,6 @@ describe('PATCH /users/:id', () => {
       .send(updateToSend)
       .expect(400)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.body.error).toBe(`${initUsers[1].email} is already in use.`);
         // expect(res.body.error).toBe(`${initUsers[2].displayName} is already in use.`);
       })
@@ -612,7 +577,6 @@ describe('PATCH /users/:id', () => {
       .send(updateToSend)
       .expect(401)
       .expect((res) => {
-        // console.log('res.error:', res.error);
         expect(res.body.error).toBe('Not allowed to update this user.');
       })
       .end(done);
@@ -630,7 +594,6 @@ describe('PATCH /users/:id', () => {
       .send(updateToSend)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.location).toBe(updateToSend.location);
         expect(res.body.somethingNew).toBeFalsy();
         expect(res.body.password).toBeFalsy();
@@ -639,7 +602,6 @@ describe('PATCH /users/:id', () => {
       .end((err) => {
         if (err) return done(err);
         return User.findById(initUsers[0]._id).then((user) => {
-          // console.log('check user:', user);
           expect(user.password).not.toBe(updateToSend.password);
           done();
         }).catch(e => done(e));
@@ -669,7 +631,6 @@ describe('DELETE /users/:id', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(200)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.active).toBe(false);
       })
       .end(done);
@@ -680,19 +641,17 @@ describe('DELETE /users/:id', () => {
       .set('Authorization', `bearer ${initUserTokens[0]}`)
       .expect(404)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.error).toBe('Invalid ID.');
       })
       .end(done);
   });
-  it('should respond with a 404 error to a valid but absent ID', (done) => {
+  it('should respond with a 400 error to a valid but absent ID', (done) => {
     const testId = new ObjectID();
     request(server)
       .delete(`/users/${testId.toString()}`)
       .set('Authorization', `bearer ${initUserTokens[0]}`)
-      .expect(404)
+      .expect(400)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.error).toBe('User could not be found.');
       })
       .end(done);
@@ -703,7 +662,6 @@ describe('DELETE /users/:id', () => {
       .set('Authorization', `bearer ${initUserTokens[1]}`)
       .expect(401)
       .expect((res) => {
-        // console.log('res.body:', res.body);
         expect(res.body.error).toBe('Not allowed to delete this user.');
       })
       .end(done);
