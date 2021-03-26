@@ -109,10 +109,52 @@ const QR7TimeStamp = new Parser()
 const QR7TimeDelta = new Parser()
   .uint16le('timeDeltaSeconds', { formatter: value => value / 1000 });
 
-// assume all four attributes (position, time, HR, altitude) for now
+// three attributes (position, time, altitude)
+const QR7WaypointNoHR = new Parser()
+  .uint32le('long', {
+    formatter: (value) => {
+      // console.log('QR7WaypointNoHR long', value / 3600000);
+      return value / 3600000;
+    },
+  })
+  .uint32le('lat', {
+    formatter: (value) => {
+      // console.log('QR7WaypointNoHR lat', value / 3600000);
+      return value / 3600000;
+    },
+  })
+  .uint8('timeType')
+  .choice('time', {
+    tag: 'timeType',
+    choices: {
+      0: QR7TimeStamp,
+    },
+    defaultChoice: QR7TimeDelta,
+  })
+  .uint16le('altitude');
+
+const QR7SegmentNoHR = new Parser()
+  .uint32le('waypointCount')
+  // , {
+  //   formatter: (value) => {
+  //     console.log('waypoint count', value);
+  //     return value;
+  //   },
+  // })
+  .array('waypoints', {
+    type: QR7WaypointNoHR,
+    length: 'waypointCount',
+  });
+
+const QR7SegmentsNoHR = new Parser()
+  .uint32le('segmentCount')
+  .array('segments', {
+    type: QR7SegmentNoHR,
+    length: 'segmentCount',
+  });
+
+// assumes all four attributes (position, time, HR, altitude)
 const QR7Waypoint = new Parser()
-  // .then(() => console.log('QR7Waypoint'))
-  // .skip(20);
   .uint32le('long', {
     formatter: (value) => {
       // console.log('QR7Waypoint long', value / 3600000);
@@ -125,7 +167,7 @@ const QR7Waypoint = new Parser()
       return value / 3600000;
     },
   })
-  .uint8('timeType') // assume 0 for now, i.e. full timestamp not difference
+  .uint8('timeType')
   .choice('time', {
     tag: 'timeType',
     choices: {
@@ -146,18 +188,26 @@ const QR7Segment = new Parser()
   // })
   .array('waypoints', {
     type: QR7Waypoint,
-    // length: 10,
     length: 'waypointCount',
+  });
+
+const QR7Segments = new Parser()
+  .uint32le('segmentCount')
+  .array('segments', {
+    type: QR7Segment,
+    length: 'segmentCount',
   });
 
 const QR7 = new Parser()
   .uint32le('length')
   .uint16le('attributes')
   .uint16le('extraWaypointAttributesLength') // assume 0 for now
-  .uint32le('segmentCount')
-  .array('segments', {
-    type: QR7Segment,
-    length: 'segmentCount',
+  .choice('attributes', {
+    tag: 'QR7SegmentType',
+    choices: {
+      11: QR7SegmentsNoHR,
+    },
+    defaultChoice: QR7Segments,
   });
 
 const QR8Handle = new Parser()
