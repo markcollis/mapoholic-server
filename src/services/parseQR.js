@@ -202,8 +202,8 @@ const QR7 = new Parser()
   .uint32le('length')
   .uint16le('attributes')
   .uint16le('extraWaypointAttributesLength') // assume 0 for now
-  .choice('attributes', {
-    tag: 'QR7SegmentType',
+  .choice('qR7Segments', {
+    tag: 'attributes',
     choices: {
       11: QR7SegmentsNoHR,
     },
@@ -425,9 +425,10 @@ const getQRData = (buffer) => {
           toReturn.sessions.sessionData = section.content.qR5Sections.map((qR5Section) => {
             const session = {};
             qR5Section.qR5Section.qR6Sections.forEach((qR6Section) => {
+              // console.log('qR6Section', JSON.stringify(qR6Section, null, 2));
               switch (qR6Section.qR6Tag) {
                 case 7:
-                  session.route = qR6Section.qR6Section.segments.map((segment) => {
+                  session.route = qR6Section.qR6Section.qR7Segments.segments.map((segment) => {
                     return {
                       waypointCount: segment.waypoints.length,
                       waypoints: segment.waypoints.map((waypoint) => {
