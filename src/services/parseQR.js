@@ -429,11 +429,26 @@ const getQRData = (buffer) => {
               switch (qR6Section.qR6Tag) {
                 case 7:
                   session.route = qR6Section.qR6Section.qR7Segments.segments.map((segment) => {
+                    const [firstWaypoint, ...waypoints] = segment.waypoints;
+                    const raceTime = new Date(firstWaypoint.time.timestamp);
+                    const first = {
+                      lat: firstWaypoint.lat,
+                      long: firstWaypoint.long,
+                      timestamp: raceTime.getTime(),
+                      heartRate: firstWaypoint.heartRate,
+                      altitude: firstWaypoint.altitude,
+                    };
+                    const rest = waypoints.map(waypoint => ({
+                      lat: waypoint.lat,
+                      long: waypoint.long,
+                      timestamp: raceTime
+                        .setSeconds(raceTime.getSeconds() + waypoint.time.timeDeltaSeconds),
+                      heartRate: waypoint.heartRate,
+                      altitude: waypoint.altitude,
+                    }));
                     return {
                       waypointCount: segment.waypoints.length,
-                      waypoints: segment.waypoints.map((waypoint) => {
-                        return [waypoint.lat, waypoint.long];
-                      }),
+                      waypoints: [first, ...rest],
                     };
                   });
                   break;
@@ -491,15 +506,16 @@ const toRadians = (degrees) => {
 };
 
 // simple approximation of distance for points that are close together
-const calculateDistance = (a, b) => { // (a, b are lat, long coordinates)
-  if (!a[0] || !a[1] || !b[0] || !b[1]) return undefined;
-  if (Math.abs(a[0]) > 90 || Math.abs(b[0]) > 90
-    || Math.abs(a[1]) > 180 || Math.abs(b[1]) > 180) return undefined;
+// (a, b are waypoint objects with lat, long coordinates)
+const calculateDistance = (a, b) => {
+  if (!a.lat || !a.long || !b.lat || !b.long) return undefined;
+  if (Math.abs(a.lat) > 90 || Math.abs(b.lat) > 90
+    || Math.abs(a.long) > 180 || Math.abs(b.long) > 180) return undefined;
   const earthRadius = 6371000; // metres
-  const aLat = toRadians(a[0]);
-  const aLong = toRadians(a[1]);
-  const bLat = toRadians(b[0]);
-  const bLong = toRadians(b[1]);
+  const aLat = toRadians(a.lat);
+  const aLong = toRadians(a.long);
+  const bLat = toRadians(b.lat);
+  const bLong = toRadians(b.long);
   const x = (aLong - bLong) * Math.cos((aLat + bLat) / 2);
   const y = aLat - bLat;
   const d = earthRadius * Math.sqrt(x * x + y * y);
